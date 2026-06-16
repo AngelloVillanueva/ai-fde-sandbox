@@ -1,9 +1,15 @@
-from fastapi import FastAPI
-import httpx
+from fastapi import FastAPI #fastapi es uina libreria que te permite crear APis y poder consultarlas 
+
+# HTTPX es un modo de consulta cerrado con mayor seguridad que la consulta tradicional HTTP
+import httpx 
 
 app = FastAPI(title="Cloud Run FDE Microservice")
 
+# desde el modulo de app obtenemos el health
 @app.get("/health")
+
+# async def sse usar para funciones que puedan ser pausada y luego volver a ser invocada para completarse. A diferencia del def normal que es secuencial
+# Esto es muy util si queremos hacer otras cosas mientas "esperamos" la respuesta del servidor o la app
 async def health_check():
     """Endpoint básico de monitoreo para Cloud Run."""
     return {"status": "healthy", "service": "ai-fde-balancer"}
