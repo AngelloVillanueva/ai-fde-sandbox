@@ -27,6 +27,7 @@
     
 #         return {"store_id": store_id, "status": "error", "message": "Store data not found"}`
 
+
 import asyncio
 import random
 
@@ -36,10 +37,12 @@ class BigQuerySimulatedClient:
     Encapsula tanto la generación de datos como la lógica de consulta asíncrona.
     """
 
+# Definimos una funcion de inicio para generan 100 datos aleatorios
     def __init__(self):
         # Inicializa el estado interno generando el dataset al momento de instanciar.
         self.mock_database = self._generate_mock_data(100)
 
+# Funcion real de datos aleatorios 
     def _generate_mock_data(self, n: int) -> dict:
         """
         Método interno para poblar el diccionario con datos sintéticos.

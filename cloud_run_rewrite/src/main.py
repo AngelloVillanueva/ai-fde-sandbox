@@ -1,4 +1,7 @@
-from fastapi import FastAPI #fastapi es uina libreria que te permite crear APis y poder consultarlas 
+from fastapi import FastAPI, Request, Query, From #fastapi es uina libreria que te permite crear APis y poder consultarlas
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 # HTTPX es un modo de consulta cerrado con mayor seguridad que la consulta tradicional HTTP
 import httpx 
