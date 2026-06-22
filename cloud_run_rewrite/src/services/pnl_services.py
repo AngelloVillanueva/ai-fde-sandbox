@@ -15,3 +15,27 @@ class PNLServices:
         db = {}
         for i in range(1, 101):
             ventas = round(random.uniform(10000,50000))
+            costos = round(ventas * random.uniform(0.4,0.6),2)
+            opex = round(ventas* random.uniform(0.15,0.25),2)
+            opinc = round(ventas-costos-opex,2)
+            comuna = random.choice(self._comunas)
+
+            # Guardaremos cada tienda ya formateada como el modelo Pydantic
+            db[i] = TiendaPL(
+                tienda_id=i,
+                ventas=ventas,
+                costos=costos,
+                opex=opex,
+                opinc=opinc,
+                comuna=comuna
+            )
+        return db
+    
+    def obtener_todas_las_tiendas(self) -> List[TiendaPL]:
+        return list(self._database.values())
+    
+    def obtener_tienda_por_id(self, tienda_id: int) -> Optional[TiendaPL]:
+        return self._database.get(tienda_id)
+    
+    def obtener_tiendas_por_comuna(self, comuna: str) -> List[TiendaPL]:
+        return [t for t in self._database.values() if t.comuna.lower() == comuna.lower()]
