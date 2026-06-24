@@ -1,10 +1,10 @@
 import random
-from typing import Dict, List, Optimal
-
+from typing import Dict, List, Optional
+random.seed(42)
 # Importamos el modelo que creamos en el paso anterior
 from src.models import TiendaPL
 
-class PNLServices:
+class PNLService:
     def __init__(self):
         # Aqui vive el diccionario de 100 tiendas simuladas
         # Lo ideal es generarlo una sola ves en una isntacia de servicio
@@ -31,11 +31,17 @@ class PNLServices:
             )
         return db
     
-    def obtener_todas_las_tiendas(self) -> List[TiendaPL]:
+    def get_todas_las_tiendas(self) -> List[TiendaPL]:
         return list(self._database.values())
     
-    def obtener_tienda_por_id(self, tienda_id: int) -> Optional[TiendaPL]:
+    def get_tienda_por_id(self, tienda_id: int) -> Optional[TiendaPL]:
         return self._database.get(tienda_id)
     
-    def obtener_tiendas_por_comuna(self, comuna: str) -> List[TiendaPL]:
+    def get_tiendas_por_comuna(self, comuna: str) -> List[TiendaPL]:
         return [t for t in self._database.values() if t.comuna.lower() == comuna.lower()]
+
+    def get_opinc_por_id(self, tienda_id: int) -> Optional[float]:
+        tienda = self.get_tienda_por_id(tienda_id)
+        if tienda:
+            return tienda.opinc
+        return None
