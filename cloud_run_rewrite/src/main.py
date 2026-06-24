@@ -8,6 +8,11 @@ app = FastAPI(title="FDE P&L Dashboard & Agent API")
 # Inicializamos el servicio una sola vez (Singleton conceptual)
 pnl_service = PNLService()
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy", "service": "ai-fde-balancer"}
+
+
 @app.get("/api/v1/pnl", response_model=List[TiendaPL])
 def get_pnl(comuna: Optional[str] = Query(None, description="Filtrar tiendas por comuna")):
     """

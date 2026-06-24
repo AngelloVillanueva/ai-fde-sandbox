@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyc
+
+# Tests
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Entorno
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/

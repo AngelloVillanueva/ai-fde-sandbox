@@ -1,6 +1,6 @@
 import random
 from typing import Dict, List, Optional
-random.seed(42)
+
 # Importamos el modelo que creamos en el paso anterior
 from src.models import TiendaPL
 
@@ -12,6 +12,7 @@ class PNLService:
         self._database: Dict[int, TiendaPL] = self._generador_datos_sinteticos()
 
     def _generador_datos_sinteticos(self) -> Dict[int, TiendaPL]:
+        random.seed(42)
         db = {}
         for i in range(1, 101):
             ventas = round(random.uniform(10000,50000))
