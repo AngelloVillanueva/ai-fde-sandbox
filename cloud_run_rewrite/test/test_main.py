@@ -32,3 +32,11 @@ def test_happy_path_get_pnl():
 def test_not_found_get_pnl():
     response = client.get("/api/v1/pnl/999")
     assert response.status_code == 404
+
+def test_filter_by_comuna():
+    response = client.get("/api/v1/pnl?comuna=La+Granja")
+    assert response.status_code == 200
+    tiendas = response.json()
+    assert len(tiendas) > 0
+    assert all(t["comuna"] == "La Granja" for t in tiendas)
+    assert 45 in [t["tienda_id"] for t in tiendas]

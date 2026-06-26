@@ -8,11 +8,12 @@ app = FastAPI(title="FDE P&L Dashboard & Agent API")
 # Inicializamos el servicio una sola vez (Singleton conceptual)
 pnl_service = PNLService()
 
+# Nuestra primera ruta
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "service": "ai-fde-balancer"}
 
-
+# Endpoint para listar todas las tiendas
 @app.get("/api/v1/pnl", response_model=List[TiendaPL])
 def get_pnl(comuna: Optional[str] = Query(None, description="Filtrar tiendas por comuna")):
     """
@@ -23,6 +24,7 @@ def get_pnl(comuna: Optional[str] = Query(None, description="Filtrar tiendas por
         return pnl_service.get_tiendas_por_comuna(comuna)
     return pnl_service.get_todas_las_tiendas()
 
+# Endpoint para obtener una tienda por su ID
 @app.get("/api/v1/pnl/{tienda_id}", response_model=TiendaPL)
 def get_tienda_pnl(tienda_id: int):
     """
@@ -34,10 +36,10 @@ def get_tienda_pnl(tienda_id: int):
         raise HTTPException(status_code=404, detail=f"La tienda {tienda_id} no existe")
     return tienda
 
-
+# Endpoint para obtener el OPINC de una tienda por su ID
 @app.get("/api/v1/pnl/{tienda_id}/opinc", response_model=dict)
 def get_opinc_por_id(tienda_id: int):
     opinc = pnl_service.get_opinc_por_id(tienda_id)
-    if not opinc:
+    if opinc is None:
         raise HTTPException(status_code=404, detail=f"La tienda {tienda_id} no existe")
     return {"opinc": opinc}
