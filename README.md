@@ -4,6 +4,8 @@ Sandbox de práctica para construir una **API de análisis financiero P&L** orie
 
 El caso de uso simula consultas del tipo: *¿Cómo le fue a la tienda 45?* o *¿Qué tiendas hay en Providencia?*
 
+> **Handoff para sesiones AI:** ver [`CONTEXT.md`](CONTEXT.md) (estado del proyecto, north star, trampas conocidas).
+
 ---
 
 ## Demo en producción (Cloud Run)
