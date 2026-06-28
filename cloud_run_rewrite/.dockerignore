@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+
+# Entorno local
+.venv/
+venv/
+.env
+
+# Tests (no necesarios en la imagen de producción)
+test/
+
+# IDE
+.vscode/
+.idea/
