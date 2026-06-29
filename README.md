@@ -31,6 +31,8 @@ El caso de uso simula consultas del tipo: *¿Cómo le fue a la tienda 45?* o *¿
 | Validación / schema | [Pydantic](https://docs.pydantic.dev/) |
 | Servidor | [Uvicorn](https://www.uvicorn.org/) |
 | Tests | [pytest](https://docs.pytest.org/) + `TestClient` |
+| Cliente HTTP (tool) | [httpx](https://www.python-httpx.org/) |
+| Config por entorno | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) |
 | Contenedor | Docker |
 | Despliegue | [Google Cloud Run](https://cloud.google.com/run) |
 
@@ -45,7 +47,9 @@ ai-fde-sandbox/
 └── cloud_run_rewrite/
     ├── .dockerignore
     ├── config/
-    │   └── settings.py          # Configuración por entorno (WIP)
+    │   └── settings.py          # Env vars (API_BASE_URL)
+    ├── scripts/
+    │   └── pnl_tool.py          # Tool del agente: HTTP → texto humano
     ├── src/
     │   ├── main.py              # FastAPI app y endpoints
     │   ├── models.py            # Schema TiendaPL
@@ -151,6 +155,27 @@ Cobertura actual:
 - Tienda inexistente (`404`)
 - Filtro por comuna (`?comuna=La+Granja`)
 
+### Script tool (`pnl_tool.py`)
+
+Cliente local que llama la API y devuelve texto legible (puente hacia el agente).
+
+**Local** (requiere uvicorn corriendo en otra terminal):
+
+```powershell
+cd cloud_run_rewrite
+$env:API_BASE_URL="http://127.0.0.1:8000"
+python scripts/pnl_tool.py --tienda_id 45
+```
+
+**Producción** (Cloud Run — no requiere redeploy del script):
+
+```powershell
+$env:API_BASE_URL="https://fde-pnl-api-198971893116.europe-west1.run.app"
+python scripts/pnl_tool.py --tienda_id 45
+```
+
+Default sin `$env:API_BASE_URL`: `http://127.0.0.1:8000` (definido en `config/settings.py`).
+
 ---
 
 ## Docker (local)
@@ -201,20 +226,27 @@ Al terminar, `gcloud` imprime la **Service URL** pública (`https://....run.app`
 ## Arquitectura
 
 ```
-Cliente (navegador / agente / tests)
-        │
-        ▼
-   Cloud Run / uvicorn
-        │
-        ▼
-   main.py          ← rutas HTTP, validación de params
-        │
-        ▼
-   PNLService       ← lógica de negocio + datos sintéticos
-        │
-        ▼
-   TiendaPL         ← schema Pydantic (contrato de respuesta)
+                    ┌── scripts/pnl_tool.py  ← CLIENTE (local)
+                    │      httpx GET → JSON → texto humano
+                    │
+Cliente ────────────┼── navegador / tests
+(navegador,         │
+ tool, tests)       ▼
+              Cloud Run / uvicorn  ← SERVIDOR
+                    │
+                    ▼
+               main.py            ← rutas HTTP
+                    │
+                    ▼
+               PNLService        ← datos sintéticos (SSOT)
+                    │
+                    ▼
+               TiendaPL          ← schema Pydantic
 ```
+
+- **Servidor** (`src/`): expone JSON vía REST. Solo redeploy a Cloud Run si cambias esto.
+- **Cliente** (`scripts/pnl_tool.py`): corre en tu PC; consume la API sin deploy.
+- **Config** (`config/settings.py`): `API_BASE_URL` por entorno (12-factor).
 
 Principio aplicado: **una sola fuente de verdad** (`pnl_services.py`). El módulo `bq_cliente.py` es un ejercicio aparte para simular consultas async a BigQuery y aún no está integrado a la API.
 
@@ -226,7 +258,8 @@ Principio aplicado: **una sola fuente de verdad** (`pnl_services.py`). El módul
 - [x] Endpoints P&L + health check
 - [x] Integration tests con pytest
 - [x] Dockerfile + deploy en Cloud Run
-- [ ] `config/settings.py` con variables de entorno
+- [x] `config/settings.py` con variables de entorno
+- [x] Script tool `pnl_tool.py` (HTTP → texto humano)
 - [ ] Integrar `bq_cliente.py` como capa de datos async
 - [ ] Capa de agente (tool calling / MCP) sobre la API
 

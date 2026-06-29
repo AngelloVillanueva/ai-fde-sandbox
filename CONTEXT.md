@@ -17,6 +17,40 @@
 - **Anti-vibe-coding:** entender antes de copiar; saber qué assert/comando verifica el cambio
 - Viernes = psicólogo + pareja (coding solo BONUS)
 
+## Protocolo de sesión (acuerdos permanentes)
+
+### Orientación
+- Toda sesión apunta al North Star: AI FDE nivel Palantir / Google Cloud.
+- Cada sesión = **1 concepto + 1 mini build** mínimo. Puede haber más si el tiempo lo permite.
+
+### Cómo explico conceptos
+Cada concepto nuevo viene con **3 partes obligatorias**:
+1. **Descripción técnica** — qué es en términos de ingeniería.
+2. **Analogía** — explicación que puedas usar con compañeros de trabajo sin background técnico.
+3. **Por qué importa para FDE** — qué rol juega en el nivel Palantir/Google.
+
+Cuando aplique: *"Si un reclutador te pregunta X, respondes Y."*
+
+### Formato de respuestas
+- Cortas, sin relleno, orientadas a aprendizaje rápido.
+- Al inicio de cada sesión: **glosario** de palabras, librerías, métodos o arquitectura que se usarán.
+- Si se entrega código: explicación línea por línea + analogía + auto-auditoría de por qué se hace así.
+- **Siempre indicar ruta exacta** al sugerir crear o modificar algo. Formato obligatorio:
+  - Crear: `cloud_run_rewrite/scripts/pnl_tool.py` → función `formatear_tienda()`
+  - Modificar: `cloud_run_rewrite/config/settings.py` → agregar campo `api_base_url`
+  - Sin ruta explícita = instrucción incompleta; no avanzar.
+
+### Anti-Vibe-Coding (regla dura)
+- **No crear archivos ni funciones** que no hayan sido pedidos explícitamente.
+- **No sobrediseñar**: la solución más simple que funciona.
+- Angello escribe el código guiado; el agente explica y revisa.
+- Verificación obligatoria antes de seguir al siguiente paso.
+
+### Trampas de sesión
+- No crear tests automáticamente si no se pidieron.
+- No avanzar al siguiente mini build sin verificar el anterior.
+- Si Angello dice "issue reproduced / proceed", confirmar qué se procederá antes de codear.
+
 ## Estado actual (Fase 1 ~completa)
 
 | Hecho | Detalle |
@@ -64,7 +98,8 @@ HTTP → main.py → PNLService → TiendaPL (memoria)
 ```
 
 - **NO conectar** `bq_cliente.py` aún (Fase async/BQ, esquema distinto).
-- `config/settings.py` vacío (pendiente pydantic-settings).
+- `config/settings.py` ✅ — `BaseSettings`, campo `api_base_url`, lee `$env:API_BASE_URL`.
+- `scripts/pnl_tool.py` en progreso — Paso 1 (imports) completado.
 
 ## Comandos clave
 
@@ -94,8 +129,8 @@ gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthent
 
 ## Roadmap — siguiente (orden)
 
-1. [ ] `config/settings.py` (env vars)
-2. [ ] Script tool: HTTP → respuesta texto humano (puente agente)
+1. [x] `config/settings.py` (env vars) — pydantic-settings, API_BASE_URL
+2. [ ] Script tool: `scripts/pnl_tool.py` — HTTP → texto humano (en progreso)
 3. [ ] Integrar `bq_cliente.py` (async, Fase 2)
 4. [ ] Agente / MCP sobre la API (Fase 2 plan maestro)
 
@@ -109,6 +144,8 @@ gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthent
 | `test/test_main.py` | Tests |
 | `Dockerfile` | Imagen Cloud Run |
 | `README.md` | Docs humanas + URLs |
+| `config/settings.py` | Env vars — `api_base_url` |
+| `scripts/pnl_tool.py` | Tool del agente (en construcción) |
 
 ## Qué NO asumir
 
