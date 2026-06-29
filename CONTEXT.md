@@ -65,7 +65,7 @@ Cuando aplique: *"Si un reclutador te pregunta X, respondes Y."*
 | Docker | `Dockerfile` + `.dockerignore` |
 | Cloud Run | **LIVE** — ver URL abajo |
 | Settings | `config/settings.py` — `api_base_url`, lee `$env:API_BASE_URL` |
-| Script tool | `scripts/pnl_tool.py` — httpx + formateo + CLI `--tienda_id` |
+| Script tool | `scripts/pnl_tool.py` — 2 tools: `--tienda_id` y `--comuna` |
 
 ## URL producción
 
@@ -121,10 +121,12 @@ cd cloud_run_rewrite && pytest -v
 cd cloud_run_rewrite
 $env:API_BASE_URL="http://127.0.0.1:8000"
 python scripts/pnl_tool.py --tienda_id 45
+python scripts/pnl_tool.py --comuna "La Granja"
 
 # Tool — Cloud Run (sin redeploy del script)
 $env:API_BASE_URL="https://fde-pnl-api-198971893116.europe-west1.run.app"
 python scripts/pnl_tool.py --tienda_id 45
+python scripts/pnl_tool.py --comuna "La Granja"
 
 # Docker local → navegador usa localhost:8080 (NO 0.0.0.0)
 docker build -t fde-pnl-api .
@@ -150,12 +152,15 @@ gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthent
 | `import Settings` vs `settings` | Importar `settings` (instancia), no la clase `Settings` |
 | Tool no conecta a Cloud Run | No requiere redeploy — es cliente; verificar `$env:API_BASE_URL` |
 | Redeploy innecesario del script | `pnl_tool.py` corre local; solo redeploy si cambia `src/` |
+| `formatear_comuna(response.json())` | Pasar 2 args: `formatear_comuna(comuna, response.json())` |
+| `httpx.RequestError` en tool local | uvicorn debe estar corriendo en `:8000` o usar URL Cloud Run |
+| `python scripts/` desde repo root | Siempre `cd cloud_run_rewrite` primero |
 
 ## Roadmap — siguiente (orden)
 
 1. [x] `config/settings.py` (env vars)
 2. [x] Script tool: `scripts/pnl_tool.py` — HTTP → texto humano
-3. [ ] Segunda tool: consulta por comuna (`GET /api/v1/pnl?comuna=X`)
+3. [x] Segunda tool: consulta por comuna (`GET /api/v1/pnl?comuna=X`)
 4. [ ] Tests de `pnl_tool` con mock httpx
 5. [ ] Integrar `bq_cliente.py` (async, Fase 2)
 6. [ ] Agente / MCP sobre la API (Fase 2 plan maestro)
@@ -171,20 +176,26 @@ gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthent
 | `Dockerfile` | Imagen Cloud Run |
 | `README.md` | Docs humanas + URLs |
 | `config/settings.py` | Env vars — `api_base_url` |
-| `scripts/pnl_tool.py` | Tool del agente — cliente HTTP → texto humano |
+| `scripts/pnl_tool.py` | 2 tools: `consultar_tienda` + `consultar_comuna` |
 
-## Última sesión (Dom 28 Jun 2026)
+## Última sesión (sesión corta — comuna tool)
 
 **Logros:**
-- `config/settings.py` — pydantic-settings, `API_BASE_URL` por entorno
-- `scripts/pnl_tool.py` — `consultar_tienda`, `formatear_tienda`, CLI `--tienda_id`
+- `consultar_comuna()` — `GET /api/v1/pnl?comuna=X`
+- `formatear_comuna()` — lista JSON → resumen con IDs + P&L agregado
+- CLI: `--tienda_id` o `--comuna` (mutually exclusive)
 - Verificado local + Cloud Run
-- README actualizado
+
+**Conceptos:** query params, respuesta lista vs dict, múltiples tools, `RequestError` = API apagada.
+
+**Commit sugerido:** `Add comuna filter tool to pnl_tool script`
+
+**Próxima sesión:** tests de `pnl_tool` con mock httpx.
+
+## Sesión anterior (Dom 28 Jun 2026)
+
+- `config/settings.py`, primera tool `consultar_tienda`, README inicial del script tool
 - Commit: `Add pnl_tool client script, settings, and update README`
-
-**Conceptos:** 12-factor config, cliente vs servidor, httpx, status codes, tool calling, argparse.
-
-**Próxima sesión sugerida:** segunda tool por comuna o tests con mock httpx.
 
 ## Qué NO asumir
 

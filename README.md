@@ -157,7 +157,12 @@ Cobertura actual:
 
 ### Script tool (`pnl_tool.py`)
 
-Cliente local que llama la API y devuelve texto legible (puente hacia el agente).
+Cliente local con **2 tools** que llaman la API y devuelven texto legible:
+
+| Tool | CLI | Endpoint API |
+|---|---|---|
+| Por tienda | `--tienda_id 45` | `GET /api/v1/pnl/{id}` |
+| Por comuna | `--comuna "La Granja"` | `GET /api/v1/pnl?comuna=X` |
 
 **Local** (requiere uvicorn corriendo en otra terminal):
 
@@ -165,6 +170,7 @@ Cliente local que llama la API y devuelve texto legible (puente hacia el agente)
 cd cloud_run_rewrite
 $env:API_BASE_URL="http://127.0.0.1:8000"
 python scripts/pnl_tool.py --tienda_id 45
+python scripts/pnl_tool.py --comuna "La Granja"
 ```
 
 **Producción** (Cloud Run — no requiere redeploy del script):
@@ -172,6 +178,7 @@ python scripts/pnl_tool.py --tienda_id 45
 ```powershell
 $env:API_BASE_URL="https://fde-pnl-api-198971893116.europe-west1.run.app"
 python scripts/pnl_tool.py --tienda_id 45
+python scripts/pnl_tool.py --comuna "La Granja"
 ```
 
 Default sin `$env:API_BASE_URL`: `http://127.0.0.1:8000` (definido en `config/settings.py`).
@@ -260,6 +267,8 @@ Principio aplicado: **una sola fuente de verdad** (`pnl_services.py`). El módul
 - [x] Dockerfile + deploy en Cloud Run
 - [x] `config/settings.py` con variables de entorno
 - [x] Script tool `pnl_tool.py` (HTTP → texto humano)
+- [x] Segunda tool: filtro por comuna (`--comuna`)
+- [ ] Tests de `pnl_tool` con mock httpx
 - [ ] Integrar `bq_cliente.py` como capa de datos async
 - [ ] Capa de agente (tool calling / MCP) sobre la API
 
