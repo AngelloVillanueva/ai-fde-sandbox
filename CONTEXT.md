@@ -50,17 +50,22 @@ Cuando aplique: *"Si un reclutador te pregunta X, respondes Y."*
 - No crear tests automáticamente si no se pidieron.
 - No avanzar al siguiente mini build sin verificar el anterior.
 - Si Angello dice "issue reproduced / proceed", confirmar qué se procederá antes de codear.
+- Angello escribe el código; el agente guía y revisa — no implementar sin pedido explícito.
+- Commit al cierre de cada sesión: `<verbo> <qué>`.
+- Comandos de verificación simples (evitar one-liners crípticos de Python).
 
-## Estado actual (Fase 1 ~completa)
+## Estado actual (Fase 1 completa)
 
 | Hecho | Detalle |
 |---|---|
 | API FastAPI | `cloud_run_rewrite/src/main.py` |
 | SSOT datos | `PNLService` + `random.seed(42)` en `_generador_datos_sinteticos()` |
 | Schema | `TiendaPL`: tienda_id, ventas, costos, opex, opinc, comuna |
-| Tests | 4 integration tests en `test/test_main.py` — todos pasan |
+| Tests API | 4 integration tests en `test/test_main.py` — todos pasan |
 | Docker | `Dockerfile` + `.dockerignore` |
 | Cloud Run | **LIVE** — ver URL abajo |
+| Settings | `config/settings.py` — `api_base_url`, lee `$env:API_BASE_URL` |
+| Script tool | `scripts/pnl_tool.py` — httpx + formateo + CLI `--tienda_id` |
 
 ## URL producción
 
@@ -94,25 +99,38 @@ https://fde-pnl-api-198971893116.europe-west1.run.app
 ## Arquitectura
 
 ```
-HTTP → main.py → PNLService → TiendaPL (memoria)
+Cliente local (pnl_tool.py) ──httpx GET──► Cloud Run / uvicorn
+                                              │
+                                              ▼
+                                         main.py → PNLService → TiendaPL
 ```
 
+- **Servidor** (`src/`): expone JSON vía REST. Redeploy Cloud Run solo si cambia esto.
+- **Cliente** (`scripts/pnl_tool.py`): corre en local; consume la API sin deploy.
+- **Config** (`config/settings.py`): `API_BASE_URL` por entorno (12-factor).
 - **NO conectar** `bq_cliente.py` aún (Fase async/BQ, esquema distinto).
-- `config/settings.py` ✅ — `BaseSettings`, campo `api_base_url`, lee `$env:API_BASE_URL`.
-- `scripts/pnl_tool.py` en progreso — Paso 1 (imports) completado.
 
 ## Comandos clave
 
 ```bash
-# Local
+# Local — API
 cd cloud_run_rewrite && uvicorn src.main:app --reload --port 8000
 cd cloud_run_rewrite && pytest -v
+
+# Tool — local (requiere uvicorn en otra terminal)
+cd cloud_run_rewrite
+$env:API_BASE_URL="http://127.0.0.1:8000"
+python scripts/pnl_tool.py --tienda_id 45
+
+# Tool — Cloud Run (sin redeploy del script)
+$env:API_BASE_URL="https://fde-pnl-api-198971893116.europe-west1.run.app"
+python scripts/pnl_tool.py --tienda_id 45
 
 # Docker local → navegador usa localhost:8080 (NO 0.0.0.0)
 docker build -t fde-pnl-api .
 docker run -p 8080:8080 fde-pnl-api
 
-# Redeploy Cloud Run (PowerShell, UNA línea)
+# Redeploy Cloud Run (PowerShell, UNA línea) — solo si cambia src/
 gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthenticated --port=8080
 ```
 
@@ -126,13 +144,21 @@ gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthent
 | PowerShell multilínea gcloud | Una sola línea o `--source=ruta` entre comillas |
 | Navegador `0.0.0.0:8080` | Usar `localhost:8080` o URL `https://....run.app` |
 | uvicorn desde repo root | Siempre cwd = `cloud_run_rewrite/` |
+| `endpoint: f"..."` (con `:`) | Usar `endpoint = f"..."` — `:` anota tipo, `=` asigna valor |
+| `$venv:API_BASE_URL` | Debe ser `$env:API_BASE_URL` |
+| `$env` y `python` en una línea | Separar con Enter o `;` en PowerShell |
+| `import Settings` vs `settings` | Importar `settings` (instancia), no la clase `Settings` |
+| Tool no conecta a Cloud Run | No requiere redeploy — es cliente; verificar `$env:API_BASE_URL` |
+| Redeploy innecesario del script | `pnl_tool.py` corre local; solo redeploy si cambia `src/` |
 
 ## Roadmap — siguiente (orden)
 
-1. [x] `config/settings.py` (env vars) — pydantic-settings, API_BASE_URL
-2. [ ] Script tool: `scripts/pnl_tool.py` — HTTP → texto humano (en progreso)
-3. [ ] Integrar `bq_cliente.py` (async, Fase 2)
-4. [ ] Agente / MCP sobre la API (Fase 2 plan maestro)
+1. [x] `config/settings.py` (env vars)
+2. [x] Script tool: `scripts/pnl_tool.py` — HTTP → texto humano
+3. [ ] Segunda tool: consulta por comuna (`GET /api/v1/pnl?comuna=X`)
+4. [ ] Tests de `pnl_tool` con mock httpx
+5. [ ] Integrar `bq_cliente.py` (async, Fase 2)
+6. [ ] Agente / MCP sobre la API (Fase 2 plan maestro)
 
 ## Archivos que importan
 
@@ -145,7 +171,20 @@ gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthent
 | `Dockerfile` | Imagen Cloud Run |
 | `README.md` | Docs humanas + URLs |
 | `config/settings.py` | Env vars — `api_base_url` |
-| `scripts/pnl_tool.py` | Tool del agente (en construcción) |
+| `scripts/pnl_tool.py` | Tool del agente — cliente HTTP → texto humano |
+
+## Última sesión (Dom 28 Jun 2026)
+
+**Logros:**
+- `config/settings.py` — pydantic-settings, `API_BASE_URL` por entorno
+- `scripts/pnl_tool.py` — `consultar_tienda`, `formatear_tienda`, CLI `--tienda_id`
+- Verificado local + Cloud Run
+- README actualizado
+- Commit: `Add pnl_tool client script, settings, and update README`
+
+**Conceptos:** 12-factor config, cliente vs servidor, httpx, status codes, tool calling, argparse.
+
+**Próxima sesión sugerida:** segunda tool por comuna o tests con mock httpx.
 
 ## Qué NO asumir
 
