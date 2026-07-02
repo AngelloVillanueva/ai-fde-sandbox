@@ -57,7 +57,8 @@ ai-fde-sandbox/
     │       ├── pnl_services.py  # Fuente única de datos sintéticos
     │       └── bq_cliente.py    # Simulador BigQuery async (WIP, no conectado)
     ├── test/
-    │   └── test_main.py         # Integration tests
+    │   ├── test_main.py         # Integration tests API
+    │   └── test_pnl_tool.py     # Unit tests tools (mock httpx)
     ├── Dockerfile
     └── requirements.txt
 ```
@@ -145,15 +146,30 @@ Abrir en el navegador:
 
 ```bash
 cd cloud_run_rewrite
-pytest -v
+pytest -v                         # todos (9 tests)
+pytest test/test_main.py -v       # API integration (4)
+pytest test/test_pnl_tool.py -v   # tools unitarios (5)
 ```
 
-Cobertura actual:
+| Archivo | Tipo | Qué prueba |
+|---|---|---|
+| `test/test_main.py` | Integration | API vía `TestClient` (sin red externa) |
+| `test/test_pnl_tool.py` | Unit | Tools con `@patch` + `MagicMock` (httpx fake) |
+
+**Integration tests API** (`test_main.py`):
 
 - Health check (`200`)
 - Happy path tienda 45 (contrato completo `TiendaPL`)
 - Tienda inexistente (`404`)
 - Filtro por comuna (`?comuna=La+Granja`)
+
+**Unit tests pnl_tool** (`test_pnl_tool.py`) — sin uvicorn ni Cloud Run:
+
+- `formatear_tienda` / `formatear_comuna` (lista vacía)
+- `consultar_tienda` 200 y 404
+- `consultar_comuna` 200
+
+Patrón: `@patch("scripts.pnl_tool.httpx.get")` intercepta la red; `MagicMock` simula `status_code` y `.json()`.
 
 ### Script tool (`pnl_tool.py`)
 
@@ -268,7 +284,7 @@ Principio aplicado: **una sola fuente de verdad** (`pnl_services.py`). El módul
 - [x] `config/settings.py` con variables de entorno
 - [x] Script tool `pnl_tool.py` (HTTP → texto humano)
 - [x] Segunda tool: filtro por comuna (`--comuna`)
-- [ ] Tests de `pnl_tool` con mock httpx
+- [x] Unit tests `test_pnl_tool.py` (mock httpx)
 - [ ] Integrar `bq_cliente.py` como capa de datos async
 - [ ] Capa de agente (tool calling / MCP) sobre la API
 
