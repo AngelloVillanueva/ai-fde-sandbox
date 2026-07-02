@@ -70,3 +70,6 @@ Commit: `Add unit tests for pnl_tool with httpx mock`
 
 ## No asumir
 Sin BQ · Sin LLM aún · No mezclar Walmart · Portfolio MCP = Fase 2
+
+## Referencia carrera
+Ver `CAREER.md` para perfil completo, stack target, checkpoints de mercado y frases de entrevista.
