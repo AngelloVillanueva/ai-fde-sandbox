@@ -30,6 +30,6 @@ async def test_datos_coinciden_con_pnl_service():
     bq_result = await client.get_tienda_por_id(45)
     api_tienda = service.get_tienda_por_id(45)
 
-    assert bq_result["data"].opinc ++ api_tienda.opinc
+    assert bq_result["data"].opinc == api_tienda.opinc
     assert bq_result["data"].comuna == api_tienda.comuna
     assert bq_result["data"].tienda_id == api_tienda.tienda_id
