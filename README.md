@@ -30,7 +30,7 @@ El caso de uso simula consultas del tipo: *¿Cómo le fue a la tienda 45?* o *¿
 | API | [FastAPI](https://fastapi.tiangolo.com/) |
 | Validación / schema | [Pydantic](https://docs.pydantic.dev/) |
 | Servidor | [Uvicorn](https://www.uvicorn.org/) |
-| Tests | [pytest](https://docs.pytest.org/) + `TestClient` |
+| Tests | [pytest](https://docs.pytest.org/) + `TestClient` + [pytest-asyncio](https://pytest-asyncio.readthedocs.io/) |
 | Cliente HTTP (tool) | [httpx](https://www.python-httpx.org/) |
 | Config por entorno | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) |
 | Contenedor | Docker |
@@ -54,11 +54,12 @@ ai-fde-sandbox/
     │   ├── main.py              # FastAPI app y endpoints
     │   ├── models.py            # Schema TiendaPL
     │   └── services/
-    │       ├── pnl_services.py  # Fuente única de datos sintéticos
-    │       └── bq_cliente.py    # Simulador BigQuery async (WIP, no conectado)
+    │       ├── pnl_services.py  # Fuente única de datos sintéticos (API)
+    │       └── bq_cliente.py    # Simulador BigQuery async (TiendaPL, no conectado a API)
     ├── test/
     │   ├── test_main.py         # Integration tests API
-    │   └── test_pnl_tool.py     # Unit tests tools (mock httpx)
+    │   ├── test_pnl_tool.py     # Unit tests tools (mock httpx)
+    │   └── test_bq_client.py    # Unit tests BQ simulado (pytest-asyncio)
     ├── Dockerfile
     └── requirements.txt
 ```
@@ -79,6 +80,8 @@ Contrato central: `TiendaPL` (100 tiendas, IDs `1`–`100`).
 | `comuna` | Ubicación geográfica (filtro por query param) |
 
 Los datos se generan en memoria en `PNLService` con `random.seed(42)` para garantizar **reproducibilidad** en tests y demos.
+
+El módulo `bq_cliente.py` replica el mismo contrato (`TiendaPL`, seed 42) como **cliente async simulado** de BigQuery — aún no conectado a la API.
 
 ---
 
@@ -146,15 +149,17 @@ Abrir en el navegador:
 
 ```bash
 cd cloud_run_rewrite
-pytest -v                         # todos (9 tests)
+pytest -v                         # todos (12 tests)
 pytest test/test_main.py -v       # API integration (4)
 pytest test/test_pnl_tool.py -v   # tools unitarios (5)
+pytest test/test_bq_client.py -v  # BQ simulado async (3)
 ```
 
 | Archivo | Tipo | Qué prueba |
 |---|---|---|
 | `test/test_main.py` | Integration | API vía `TestClient` (sin red externa) |
 | `test/test_pnl_tool.py` | Unit | Tools con `@patch` + `MagicMock` (httpx fake) |
+| `test/test_bq_client.py` | Unit async | `BigQuerySimulatedClient` con `@pytest.mark.asyncio` |
 
 **Integration tests API** (`test_main.py`):
 
@@ -170,6 +175,21 @@ pytest test/test_pnl_tool.py -v   # tools unitarios (5)
 - `consultar_comuna` 200
 
 Patrón: `@patch("scripts.pnl_tool.httpx.get")` intercepta la red; `MagicMock` simula `status_code` y `.json()`.
+
+**Unit tests bq_cliente** (`test_bq_client.py`) — sin GCP ni uvicorn:
+
+- `get_tienda_por_id` existente (tienda 45, seed 42)
+- Tienda inexistente (`status: error`)
+- Consistencia de datos con `PNLService` (mismo `opinc` / `comuna`)
+
+Patrón: `@pytest.mark.asyncio` + `await client.get_tienda_por_id(...)`.
+
+Verificación manual del simulador:
+
+```powershell
+cd cloud_run_rewrite
+python -m src.services.bq_cliente
+```
 
 ### Script tool (`pnl_tool.py`)
 
@@ -261,17 +281,22 @@ Cliente ────────────┼── navegador / tests
                main.py            ← rutas HTTP
                     │
                     ▼
-               PNLService        ← datos sintéticos (SSOT)
+               PNLService        ← datos sintéticos (SSOT API)
                     │
                     ▼
                TiendaPL          ← schema Pydantic
+
+bq_cliente.py (local, paralelo) ← simulador BigQuery async
+    BigQuerySimulatedClient → await get_tienda_por_id → TiendaPL
+    (mismo seed 42 · aún no conectado a main.py)
 ```
 
-- **Servidor** (`src/`): expone JSON vía REST. Solo redeploy a Cloud Run si cambias esto.
-- **Cliente** (`scripts/pnl_tool.py`): corre en tu PC; consume la API sin deploy.
+- **Servidor** (`src/main.py` + `pnl_services.py`): expone JSON vía REST. Solo redeploy a Cloud Run si cambias esto.
+- **Cliente tool** (`scripts/pnl_tool.py`): corre en tu PC; consume la API sin deploy.
+- **Simulador BQ** (`bq_cliente.py`): practica I/O async con el mismo contrato `TiendaPL`; preparado para integrarse a la API en una sesión futura.
 - **Config** (`config/settings.py`): `API_BASE_URL` por entorno (12-factor).
 
-Principio aplicado: **una sola fuente de verdad** (`pnl_services.py`). El módulo `bq_cliente.py` es un ejercicio aparte para simular consultas async a BigQuery y aún no está integrado a la API.
+Principio aplicado: **contrato único** (`TiendaPL` + seed 42) compartido entre API y simulador BQ. La API sigue usando `pnl_services.py` como SSOT hasta la integración.
 
 ---
 
@@ -285,7 +310,9 @@ Principio aplicado: **una sola fuente de verdad** (`pnl_services.py`). El módul
 - [x] Script tool `pnl_tool.py` (HTTP → texto humano)
 - [x] Segunda tool: filtro por comuna (`--comuna`)
 - [x] Unit tests `test_pnl_tool.py` (mock httpx)
-- [ ] Integrar `bq_cliente.py` como capa de datos async
+- [x] Simulador `bq_cliente.py` async (`TiendaPL`, seed 42)
+- [x] Unit tests `test_bq_client.py` (pytest-asyncio)
+- [ ] Integrar `bq_cliente.py` en `PNLService` / endpoints async
 - [ ] Capa de agente (tool calling / MCP) sobre la API
 
 ---
