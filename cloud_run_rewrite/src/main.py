@@ -26,15 +26,19 @@ def get_pnl(comuna: Optional[str] = Query(None, description="Filtrar tiendas por
 
 # Endpoint para obtener una tienda por su ID
 @app.get("/api/v1/pnl/{tienda_id}", response_model=TiendaPL)
-def get_tienda_pnl(tienda_id: int):
+async def get_tienda_pnl(tienda_id: int):
     """
     Endpoint clave para el agente: si el usuario pregunta '¿Cómo le fue a la tienda 45?',
     el agente extraerá el ID 45 y llamará a esta herramienta.
     """
-    tienda = pnl_service.get_tienda_por_id(tienda_id)
-    if not tienda:
+    result = await pnl_service.get_tienda_por_id_async(tienda_id)
+
+    # Retornamos el resultado de la consulta a BigQuery
+    if result["status"] == "success":
+        return result["data"]
+    else:
         raise HTTPException(status_code=404, detail=f"La tienda {tienda_id} no existe")
-    return tienda
+
 
 # Endpoint para obtener el OPINC de una tienda por su ID
 @app.get("/api/v1/pnl/{tienda_id}/opinc", response_model=dict)
