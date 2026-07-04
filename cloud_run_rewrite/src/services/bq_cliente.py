@@ -1,7 +1,7 @@
 import asyncio
 import random
 from src.models import TiendaPL
-from typing import Dict, Optional
+from typing import Dict
 
 
 class BigQuerySimulatedClient:
