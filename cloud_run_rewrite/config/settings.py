@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     )
 
     api_base_url: str = "http://127.0.0.1:8000"
+    gemini_api_key: str = ""   # lee GEMINI_API_KEY del entorno o .env
 
 
 settings = Settings()
