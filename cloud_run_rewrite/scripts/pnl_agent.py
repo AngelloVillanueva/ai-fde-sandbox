@@ -15,7 +15,7 @@ from google.genai import types
 from config.settings import settings
 from scripts.tool_registry import TOOL_SCHEMAS, run_tool
 
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-3.1-flash-lite"
 
 client = genai.Client(api_key=settings.gemini_api_key)
 
@@ -40,12 +40,12 @@ def chat_once(pregunta: str) -> str:
     fc = part.function_call
     tool_result = run_tool(fc.name, dict(fc.args))
 
-    # Viaje 2: devolver resultado de la tool a Gemini para respuesta en prosa
+    # Viaje 2: pasar el content COMPLETO del Viaje 1 (preserva thought_signature en Gemini 3)
     response2 = client.models.generate_content(
         model=MODEL,
         contents=[
             types.Content(role="user", parts=[types.Part(text=pregunta)]),
-            types.Content(role="model", parts=[types.Part(function_call=fc)]),
+            response.candidates[0].content,
             types.Content(
                 role="user",
                 parts=[types.Part(
