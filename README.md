@@ -35,6 +35,7 @@ El caso de uso simula consultas del tipo: *¿Cómo le fue a la tienda 45?* o *¿
 | Config por entorno | [pydantic-settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) |
 | Contenedor | Docker |
 | Despliegue | [Google Cloud Run](https://cloud.google.com/run) |
+| LLM / Agente | [Google Gemini API](https://ai.google.dev/) (`google-genai`) |
 
 ---
 
@@ -49,7 +50,9 @@ ai-fde-sandbox/
     ├── config/
     │   └── settings.py          # Env vars (API_BASE_URL)
     ├── scripts/
-    │   └── pnl_tool.py          # Tool del agente: HTTP → texto humano
+    │   ├── pnl_tool.py          # Tools: HTTP → texto humano
+    │   ├── tool_registry.py     # Schemas de tools + dispatcher run_tool()
+    │   └── pnl_agent.py         # Agente REPL con Gemini tool calling
     ├── src/
     │   ├── main.py              # FastAPI app y endpoints
     │   ├── models.py            # Schema TiendaPL
@@ -191,6 +194,39 @@ cd cloud_run_rewrite
 python -m src.services.bq_cliente
 ```
 
+### Agente conversacional (`pnl_agent.py`)
+
+Agente REPL que acepta preguntas en lenguaje natural y usa Gemini para elegir y ejecutar la tool correcta:
+
+```powershell
+# Activar venv primero (obligatorio)
+Set-Location "c:\Users\Angello\Desktop\AI FDE\ai-fde-sandbox"
+.\.venv\Scripts\Activate.ps1
+
+# Configurar entorno
+Set-Location cloud_run_rewrite
+# (GEMINI_API_KEY ya está en .env)
+$env:API_BASE_URL="https://fde-pnl-api-198971893116.europe-west1.run.app"
+
+# Correr el agente
+python scripts/pnl_agent.py
+```
+
+```
+Agente P&L · escribe 'salir' para terminar
+
+Tú: ¿Cómo le fue a la tienda 45?
+Agente: La tienda 45 ubicada en La Granja registró ventas de $18,569,
+        costos de $7,918.98, OPEX de $4,522.51 y un ingreso operativo
+        neto (OPINC) de $6,127.51.
+
+Tú: ¿Qué tiendas hay en La Granja?
+Agente: En La Granja se encuentran las tiendas 12, 45 y 78...
+
+Tú: salir
+Chao.
+```
+
 ### Script tool (`pnl_tool.py`)
 
 Cliente local con **2 tools** que llaman la API y devuelven texto legible:
@@ -268,6 +304,98 @@ Al terminar, `gcloud` imprime la **Service URL** pública (`https://....run.app`
 
 ## Arquitectura
 
+### Visión general del sistema
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CAPA AGENTE (local)                                            │
+│                                                                 │
+│   Usuario escribe pregunta en español                           │
+│         │                                                       │
+│         ▼                                                       │
+│   pnl_agent.py ──── tool_registry.py (TOOL_SCHEMAS)            │
+│         │                  │                                    │
+│         │           "menú" de tools disponibles                 │
+│         ▼                                                       │
+│   Gemini API ◄──── VIAJE 1: pregunta + schemas                 │
+│         │                                                       │
+│         │  Gemini devuelve: function_call{name, args}           │
+│         ▼                                                       │
+│   run_tool(name, args)                                          │
+│         │                                                       │
+└─────────┼───────────────────────────────────────────────────────┘
+          │
+          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  CAPA TOOLS (local)                                             │
+│                                                                 │
+│   pnl_tool.py                                                   │
+│   consultar_tienda(id) ──── httpx GET ───►  Cloud Run API      │
+│   consultar_comuna(c)  ──── httpx GET ───►  Cloud Run API      │
+│                                                                 │
+│   ◄── JSON TiendaPL ──────────────────────────────────────────  │
+│   ◄── texto en prosa (formatear_tienda / formatear_comuna)      │
+│                                                                 │
+└─────────┬───────────────────────────────────────────────────────┘
+          │ resultado (texto)
+          ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  CAPA AGENTE (vuelta)                                           │
+│                                                                 │
+│   Gemini API ◄──── VIAJE 2: resultado de la tool               │
+│         │                                                       │
+│         │  Gemini genera respuesta en prosa con datos reales    │
+│         ▼                                                       │
+│   Usuario recibe: "La tienda 45 en La Granja tuvo OPINC..."    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Flujo de tool calling — los 2 viajes explicados
+
+El LLM **no ejecuta código**. Solo puede pedirte que lo ejecutes tú.
+
+```
+                    VIAJE 1 — "¿Qué necesitas?"
+ ┌──────────┐  pregunta + schemas   ┌─────────┐
+ │ pnl_agent│ ─────────────────────►│  Gemini │
+ └──────────┘                       └────┬────┘
+                                         │ function_call:
+                                         │ {name: "consultar_tienda",
+                                         │  args: {tienda_id: 45}}
+                                         ▼
+                              [Gemini NO ejecuta — solo pide]
+
+                    VIAJE 2 — "Aquí está el resultado"
+ ┌──────────┐  run_tool() → API     ┌─────────┐
+ │ pnl_agent│ ──────────────────────►│  API    │
+ │          │ ◄── "La tienda 45..." │  Cloud  │
+ │          │                       │  Run    │
+ │          │  resultado + historial └─────────┘
+ │          │ ─────────────────────►┌─────────┐
+ │          │ ◄── respuesta en prosa│  Gemini │
+ └──────────┘                       └─────────┘
+      │
+      ▼
+ "La tienda 45 en La Granja registró ventas de $18,569..."
+```
+
+### Cómo Gemini elige la tool correcta
+
+El usuario **no necesita mencionar la tool**. Gemini infiere la intención leyendo la `description` de cada schema:
+
+```
+Usuario escribe                          Tool elegida por Gemini
+──────────────────────────────────────   ──────────────────────
+"¿Cómo le fue a la tienda 45?"        → consultar_tienda(45)
+"Dame el P&L de la 45"                → consultar_tienda(45)
+"¿Qué tiendas hay en La Granja?"      → consultar_comuna("La Granja")
+"Muéstrame la zona de Providencia"    → consultar_comuna("Providencia")
+"¿Cuánto vendió la cuarenta y cinco?" → consultar_tienda(45)
+```
+
+### API + capa de datos
+
 ```
                     ┌── scripts/pnl_tool.py  ← CLIENTE (local)
                     │      httpx GET → JSON → texto humano
@@ -275,7 +403,7 @@ Al terminar, `gcloud` imprime la **Service URL** pública (`https://....run.app`
 Cliente ────────────┼── navegador / tests
 (navegador,         │
  tool, tests)       ▼
-              Cloud Run / uvicorn  ← SERVIDOR
+              Cloud Run / uvicorn  ← SERVIDOR (GCP)
                     │
                     ▼
                main.py            ← rutas HTTP
@@ -286,15 +414,16 @@ Cliente ────────────┼── navegador / tests
                  └─ sync:  _database (= bq.mock_database) → list/comuna/opinc
                     │
                     ▼
-               TiendaPL          ← schema Pydantic
+               TiendaPL          ← schema Pydantic (contrato único)
 ```
 
 - **Servidor** (`src/main.py` + `pnl_services.py`): expone JSON vía REST. Redeploy a Cloud Run si cambias `src/`.
 - **Cliente tool** (`scripts/pnl_tool.py`): corre en tu PC; consume la API sin deploy.
-- **Simulador BQ** (`bq_cliente.py`): capa async de datos para consulta por tienda; envelope `{status, data}` traducido a HTTP 404 en `main.py`.
-- **Config** (`config/settings.py`): `API_BASE_URL` por entorno (12-factor).
+- **Simulador BQ** (`bq_cliente.py`): capa async para consulta por tienda; envelope `{status, data}` traducido a HTTP 404 en `main.py`.
+- **Agente** (`pnl_agent.py`): orquesta Gemini + tools; corre local, conecta con la API en prod.
+- **Config** (`config/settings.py`): `API_BASE_URL` y `GEMINI_API_KEY` por entorno.
 
-Principio aplicado: **integración incremental** — un endpoint async conectado a BQ simulado; contrato único `TiendaPL` + seed 42 en todas las capas.
+Principio aplicado: **integración incremental** — contrato único `TiendaPL` + seed 42 en todas las capas. El agente no sabe cómo funciona la API; solo sabe que `consultar_tienda(id)` devuelve texto.
 
 ---
 
@@ -311,7 +440,9 @@ Principio aplicado: **integración incremental** — un endpoint async conectado
 - [x] Simulador `bq_cliente.py` async (`TiendaPL`, seed 42)
 - [x] Unit tests `test_bq_client.py` (pytest-asyncio)
 - [x] Integrar `bq_cliente.py` en `GET /api/v1/pnl/{tienda_id}` (async) + redeploy Cloud Run
-- [ ] Capa de agente (tool calling / MCP) sobre la API
+- [x] Agente conversacional `pnl_agent.py` con Gemini tool calling (REPL)
+- [ ] Probar y verificar agente en producción (pendiente)
+- [ ] MCP server sobre las tools (Fase 2)
 - [ ] Migrar endpoints list/comuna/opinc a async (opcional)
 
 ---

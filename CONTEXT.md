@@ -73,18 +73,69 @@ gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthent
 1. [x] settings · 2. [x] pnl_tool · 3. [x] tool comuna · 4. [x] tests pnl_tool mock
 5. [x] `bq_cliente.py` async + tests
 6. [x] Integrar `bq_cliente` en `GET /api/v1/pnl/{id}` (async) + redeploy Cloud Run
-7. [ ] **Próximo:** Agente / MCP (Fase 2)
-8. [ ] Migrar endpoints list/comuna/opinc a async (opcional)
+7. [x] `pnl_agent.py` escrito — Gemini tool calling + REPL (pendiente verificar en prod)
+8. [ ] **Próximo:** probar agente + commit + MCP server
+9. [ ] Migrar endpoints list/comuna/opinc a async (opcional)
 
 ## Archivos clave
-`src/main.py` · `pnl_services.py` · `bq_cliente.py` · `models.py` · `config/settings.py` · `scripts/pnl_tool.py` · `test/test_main.py` · `test/test_pnl_tool.py` · `test/test_bq_client.py`
+`src/main.py` · `pnl_services.py` · `bq_cliente.py` · `models.py` · `config/settings.py` · `scripts/pnl_tool.py` · `scripts/tool_registry.py` · `scripts/pnl_agent.py` · `test/test_main.py` · `test/test_pnl_tool.py` · `test/test_bq_client.py`
 
 ## Última sesión
-Integración async: `GET /pnl/{id}` → `get_tienda_por_id_async` → `bq_cliente` · envelope `status`/`data` → HTTP 404 · **12 tests green** · redeploy Cloud Run.
-Commit: `Wire GET /api/v1/pnl/{id} through async BigQuerySimulatedClient`
+`pnl_agent.py`: Gemini tool calling con `google-genai` SDK · `chat_once()` con 2 viajes · REPL `main()` · `sys.path` fix · `tool_registry.py` limpio (sin SDK). Agente escrito pero **aún no verificado en ejecución** — pendiente correr con venv activo.
+Commit pendiente: `Add PnL conversational agent with Gemini tool calling`
 
 ## No asumir
-Sin BQ real · Solo 1 endpoint async · Sin LLM aún · No mezclar Walmart · Portfolio MCP = Fase 2
+Sin BQ real · Solo 1 endpoint async · Sin LLM en API · No mezclar Walmart · Portfolio MCP = Fase 2
+
+## Conceptos clave (para el agente y para Angello)
+
+### Tool calling — los 2 viajes
+El LLM no ejecuta código. Solo pide que lo ejecutes tú.
+
+```
+VIAJE 1  usuario → Gemini (pregunta + tool schemas)
+         Gemini  → function_call {name, args}   ← Gemini NO ejecuta
+
+VIAJE 2  tú ejecutas run_tool(name, args) → resultado real
+         resultado → Gemini → respuesta en prosa → usuario
+```
+
+### sys.path en scripts/
+Scripts dentro de `scripts/` no ven `config/` ni `src/` sin esto:
+```python
+_ROOT = Path(__file__).resolve().parent.parent  # sube a cloud_run_rewrite/
+sys.path.insert(0, str(_ROOT))
+```
+Todo script nuevo que importe `config.settings` necesita este bloque.
+
+### SDK de Gemini — solo uno
+Usar únicamente `google-genai` (`from google import genai`).
+`google.generativeai` está deprecado desde 2025 — no usarlo.
+
+### API key — flujo por entorno
+| Entorno | Mecanismo |
+|---|---|
+| Sandbox (local) | `.env` → `pydantic-settings` → `settings.gemini_api_key` |
+| Producción cloud | Secret Manager → inject en runtime |
+| Enterprise GCP | Application Default Credentials (ADC), sin key explícita |
+
+### Venv — activar siempre antes de correr el agente
+```powershell
+Set-Location "c:\Users\Angello\Desktop\AI FDE\ai-fde-sandbox"
+.\.venv\Scripts\Activate.ps1
+# prompt muestra (.venv) — ahora sí están los paquetes
+```
+
+### Tool schema — campos obligatorios
+```python
+{"name": "...",           # debe coincidir exacto con run_tool
+ "description": "...",    # Gemini decide qué tool usar según esto
+ "parameters": {
+   "type": "object",
+   "properties": {"param": {"type": "integer|string", "description": "..."}},
+   "required": ["param"]
+ }}
+```
 
 ## Referencia carrera
 Ver `CAREER.md` para perfil completo, stack target, checkpoints de mercado y frases de entrevista.
