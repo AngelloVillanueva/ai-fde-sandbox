@@ -4,8 +4,17 @@
 
 ## North star
 **Carrera:** Senior AI FDE @ Palantir/Google Cloud, remoto Chile, $150K–220K.
-**Proyecto:** API P&L → URL pública → agente con tool calling.
+**Proyecto:** API P&L → URL pública → agente con tool calling → **MCP server (siguiente)**.
 **Walmart (separado):** P&L real + BQ + Cloud Run. No replicar aquí.
+
+### Progreso north star (proyecto)
+| Hito | Estado |
+|---|---|
+| API FastAPI + tests | ✅ |
+| Deploy Cloud Run (URL pública) | ✅ |
+| Tools HTTP (`pnl_tool.py`) | ✅ |
+| Agente Gemini tool calling | ✅ verificado |
+| MCP server (portfolio FDE) | ⏳ **Sesión 8** |
 
 ## Método
 11h/sem · 1 concepto + 1 mini build + 1 commit · anti-vibe-coding · Viernes OFF
@@ -17,39 +26,50 @@
 - **Angello escribe; agente guía.** No codear sin pedido. No sobrediseñar. Commit al cierre.
 - Verificación simple (`pytest`, `python scripts/...`). No one-liners crípticos.
 
-## Estado (Fase 2 — bq_cliente integrado en API)
+## Estado (Fase 2 — agente conversacional LIVE)
 | ✅ | Detalle |
 |---|---|
 | API | FastAPI `src/main.py`, 5 endpoints, seed 42 |
 | Async | `GET /api/v1/pnl/{tienda_id}` → `get_tienda_por_id_async` → `bq_cliente` |
 | Deploy | Cloud Run LIVE · redeploy Jul 2026 · Docker · 4 tests API |
 | Cliente | `scripts/pnl_tool.py` — `--tienda_id` / `--comuna` |
-| Config | `config/settings.py` → `$env:API_BASE_URL` |
+| Config | `config/settings.py` → `API_BASE_URL` + `GEMINI_API_KEY` vía `.env` |
 | Tests tools | `test/test_pnl_tool.py` — 5 unit tests mock httpx |
 | BQ simulado | `src/services/bq_cliente.py` — `BigQuerySimulatedClient` async · `TiendaPL` · seed 42 |
 | Tests BQ | `test/test_bq_client.py` — 3 tests `@pytest.mark.asyncio` · **12 total** |
+| Agente | `scripts/pnl_agent.py` — Gemini tool calling · REPL · **verificado Jul 2026** |
+| Registry | `scripts/tool_registry.py` — `TOOL_SCHEMAS` + `run_tool()` |
 
 **URL:** `https://fde-pnl-api-198971893116.europe-west1.run.app`
 **Tienda ref (seed 42):** id 45 · La Granja · opinc 6127.51
+**Modelo agente:** `gemini-3.1-flash-lite` (ver cuotas en AI Studio — no usar modelos con 0/0)
 **IDs:** 1–100 (no `store_001`)
 
 ## Arquitectura
-`pnl_tool (cliente local)` → httpx GET → `Cloud Run/uvicorn` → `main.py` → `PNLService` → `TiendaPL`
+```
+Usuario → pnl_agent.py → Gemini (viaje 1) → run_tool() → pnl_tool.py → httpx → Cloud Run
+       ← Gemini (viaje 2, prosa) ← resultado texto ←────────────────────────────────────
+```
 
 **Por tienda (async):** `GET /api/v1/pnl/{id}` → `get_tienda_por_id_async` → `BigQuerySimulatedClient` → envelope `{status, data}` → `TiendaPL`
 
 **List/comuna/opinc (sync):** `PNLService` → `_database` (= `bq.mock_database`, seed 42)
 
-- Redeploy Cloud Run **solo** si cambia `src/`. Script tool no se despliega.
-- Endpoints list/comuna/opinc **aún sync** — migración incremental pendiente.
+- Agente y tools corren **local** — no se despliegan en Cloud Run.
+- Redeploy Cloud Run **solo** si cambia `src/`.
 
 ## Comandos (cwd = `cloud_run_rewrite/`)
 ```powershell
+# venv (desde raíz del repo)
+Set-Location "c:\Users\Angello\Desktop\AI FDE\ai-fde-sandbox"
+.\.venv\Scripts\Activate.ps1
+Set-Location cloud_run_rewrite
+
 uvicorn src.main:app --reload --port 8000
 pytest -v
 python -m src.services.bq_cliente
-$env:API_BASE_URL="http://127.0.0.1:8000"; python scripts/pnl_tool.py --tienda_id 45
-$env:API_BASE_URL="https://fde-pnl-api-198971893116.europe-west1.run.app"; python scripts/pnl_tool.py --comuna "La Granja"
+$env:API_BASE_URL="https://fde-pnl-api-198971893116.europe-west1.run.app"; python scripts/pnl_tool.py --tienda_id 45
+$env:API_BASE_URL="https://fde-pnl-api-198971893116.europe-west1.run.app"; python scripts/pnl_agent.py
 gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthenticated --port=8080
 ```
 
@@ -67,25 +87,30 @@ gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthent
 | `result["data"]["comuna"]` | `data` es `TiendaPL` → `result["data"].comuna` |
 | Borrar `get_tienda_por_id` sync | Rompe test consistencia + `get_opinc_por_id` |
 | `result["status"]` vs HTTP 404 | BQ envelope → `HTTPException(404)` en `main.py` |
+| Gemini `limit: 0` | Modelo sin cuota en tu tier — ver AI Studio, usar modelos con RPD > 0 |
+| Gemini `thought_signature` | Viaje 2: pasar `response.candidates[0].content` completo, no reconstruir `function_call` |
+| Agente sin venv | Activar `.venv` desde raíz del repo antes de `python scripts/pnl_agent.py` |
+| SDK deprecado | Solo `google-genai` — no `google.generativeai` |
 | Más trampas | Ver `README.md` |
 
 ## Roadmap
 1. [x] settings · 2. [x] pnl_tool · 3. [x] tool comuna · 4. [x] tests pnl_tool mock
 5. [x] `bq_cliente.py` async + tests
 6. [x] Integrar `bq_cliente` en `GET /api/v1/pnl/{id}` (async) + redeploy Cloud Run
-7. [x] `pnl_agent.py` escrito — Gemini tool calling + REPL (pendiente verificar en prod)
-8. [ ] **Próximo:** probar agente + commit + MCP server
-9. [ ] Migrar endpoints list/comuna/opinc a async (opcional)
+7. [x] Agente `pnl_agent.py` — Gemini tool calling + REPL · verificado
+8. [ ] **Próximo:** MCP server sobre las tools (Fase 2 portfolio)
+9. [ ] Narrativa GitHub/LinkedIn + demo del portfolio
+10. [ ] Migrar endpoints list/comuna/opinc a async (opcional)
 
 ## Archivos clave
 `src/main.py` · `pnl_services.py` · `bq_cliente.py` · `models.py` · `config/settings.py` · `scripts/pnl_tool.py` · `scripts/tool_registry.py` · `scripts/pnl_agent.py` · `test/test_main.py` · `test/test_pnl_tool.py` · `test/test_bq_client.py`
 
 ## Última sesión
-`pnl_agent.py`: Gemini tool calling con `google-genai` SDK · `chat_once()` con 2 viajes · REPL `main()` · `sys.path` fix · `tool_registry.py` limpio (sin SDK). Agente escrito pero **aún no verificado en ejecución** — pendiente correr con venv activo.
+Agente conversacional **verificado**: `pnl_agent.py` + `tool_registry.py` · Gemini `gemini-3.1-flash-lite` · 2 viajes con `thought_signature` · consulta tienda 45 en prosa vía Cloud Run.
 Commit pendiente: `Add PnL conversational agent with Gemini tool calling`
 
 ## No asumir
-Sin BQ real · Solo 1 endpoint async · Sin LLM en API · No mezclar Walmart · Portfolio MCP = Fase 2
+Sin BQ real · Agente local (no deployado) · MCP = siguiente paso · No mezclar Walmart
 
 ## Conceptos clave (para el agente y para Angello)
 
@@ -97,8 +122,12 @@ VIAJE 1  usuario → Gemini (pregunta + tool schemas)
          Gemini  → function_call {name, args}   ← Gemini NO ejecuta
 
 VIAJE 2  tú ejecutas run_tool(name, args) → resultado real
+         pasar response.candidates[0].content COMPLETO (thought_signature)
          resultado → Gemini → respuesta en prosa → usuario
 ```
+
+### Gemini — modelos y cuotas
+Verificar en AI Studio → "Límites de frecuencia por modelo". Solo usar modelos con cuota > 0 (ej. `gemini-3.1-flash-lite` 500 RPD). Modelos con 0/0 fallan con `limit: 0`.
 
 ### sys.path en scripts/
 Scripts dentro de `scripts/` no ven `config/` ni `src/` sin esto:

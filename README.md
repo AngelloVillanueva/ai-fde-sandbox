@@ -1,8 +1,10 @@
 # ai-fde-sandbox
 
-Sandbox de práctica para construir una **API de análisis financiero P&L** orientada a tiendas retail. Expone datos sintéticos vía HTTP para consumo desde un dashboard, pruebas automatizadas y, en fases posteriores, un agente con tool calling.
+Sandbox de práctica para construir una **API de análisis financiero P&L** orientada a tiendas retail. Expone datos sintéticos vía HTTP, un agente conversacional con Gemini tool calling, y (próximo paso) un servidor MCP para portfolio FDE.
 
 El caso de uso simula consultas del tipo: *¿Cómo le fue a la tienda 45?* o *¿Qué tiendas hay en Providencia?*
+
+**North star del proyecto:** API P&L → URL pública → agente con tool calling — **completado**. Siguiente: MCP server + narrativa portfolio.
 
 > **Handoff para sesiones AI:** ver [`CONTEXT.md`](CONTEXT.md) (estado del proyecto, north star, trampas conocidas).
 
@@ -48,7 +50,8 @@ ai-fde-sandbox/
 └── cloud_run_rewrite/
     ├── .dockerignore
     ├── config/
-    │   └── settings.py          # Env vars (API_BASE_URL)
+    │   └── settings.py          # Env vars (API_BASE_URL, GEMINI_API_KEY)
+    ├── .env                     # GEMINI_API_KEY local (gitignored)
     ├── scripts/
     │   ├── pnl_tool.py          # Tools: HTTP → texto humano
     │   ├── tool_registry.py     # Schemas de tools + dispatcher run_tool()
@@ -194,21 +197,21 @@ cd cloud_run_rewrite
 python -m src.services.bq_cliente
 ```
 
-### Agente conversacional (`pnl_agent.py`)
+### Agente conversacional (`pnl_agent.py`) — verificado
 
-Agente REPL que acepta preguntas en lenguaje natural y usa Gemini para elegir y ejecutar la tool correcta:
+Agente REPL con **Gemini tool calling** (modelo `gemini-3.1-flash-lite`). Acepta preguntas en lenguaje natural; Gemini elige la tool y el script ejecuta `run_tool()` contra la API en Cloud Run.
+
+**Requisitos:** venv activo, `GEMINI_API_KEY` en `.env`, modelo con cuota > 0 en AI Studio.
 
 ```powershell
 # Activar venv primero (obligatorio)
 Set-Location "c:\Users\Angello\Desktop\AI FDE\ai-fde-sandbox"
 .\.venv\Scripts\Activate.ps1
 
-# Configurar entorno
 Set-Location cloud_run_rewrite
-# (GEMINI_API_KEY ya está en .env)
+# GEMINI_API_KEY en .env · API_BASE_URL opcional (default localhost)
 $env:API_BASE_URL="https://fde-pnl-api-198971893116.europe-west1.run.app"
 
-# Correr el agente
 python scripts/pnl_agent.py
 ```
 
@@ -371,7 +374,7 @@ El LLM **no ejecuta código**. Solo puede pedirte que lo ejecutes tú.
  │ pnl_agent│ ──────────────────────►│  API    │
  │          │ ◄── "La tienda 45..." │  Cloud  │
  │          │                       │  Run    │
- │          │  resultado + historial └─────────┘
+ │          │  candidates[0].content + resultado (thought_signature)
  │          │ ─────────────────────►┌─────────┐
  │          │ ◄── respuesta en prosa│  Gemini │
  └──────────┘                       └─────────┘
@@ -420,10 +423,26 @@ Cliente ────────────┼── navegador / tests
 - **Servidor** (`src/main.py` + `pnl_services.py`): expone JSON vía REST. Redeploy a Cloud Run si cambias `src/`.
 - **Cliente tool** (`scripts/pnl_tool.py`): corre en tu PC; consume la API sin deploy.
 - **Simulador BQ** (`bq_cliente.py`): capa async para consulta por tienda; envelope `{status, data}` traducido a HTTP 404 en `main.py`.
-- **Agente** (`pnl_agent.py`): orquesta Gemini + tools; corre local, conecta con la API en prod.
-- **Config** (`config/settings.py`): `API_BASE_URL` y `GEMINI_API_KEY` por entorno.
+- **Agente** (`pnl_agent.py`): orquesta Gemini + tools; corre local, conecta con la API en prod. Modelo actual: `gemini-3.1-flash-lite`.
+- **Config** (`config/settings.py`): `API_BASE_URL` y `GEMINI_API_KEY` vía `.env` / pydantic-settings.
 
 Principio aplicado: **integración incremental** — contrato único `TiendaPL` + seed 42 en todas las capas. El agente no sabe cómo funciona la API; solo sabe que `consultar_tienda(id)` devuelve texto.
+
+### Configuración Gemini
+
+| Variable | Dónde | Uso |
+|---|---|---|
+| `GEMINI_API_KEY` | `.env` (local, gitignored) | Autenticación SDK `google-genai` |
+| `API_BASE_URL` | `.env` o `$env:` | Base URL de la API P&L |
+
+**Trampas frecuentes:**
+
+| Síntoma | Causa | Fix |
+|---|---|---|
+| `limit: 0` / 429 | Modelo sin cuota en tu tier | AI Studio → Límites por modelo; usar solo RPD > 0 |
+| Error `thought_signature` | Viaje 2 reconstruye el `function_call` | Pasar `response.candidates[0].content` completo |
+| `ModuleNotFoundError: config` | Script sin `sys.path` | Bloque `_ROOT` al inicio de scripts en `scripts/` |
+| Agente sin paquetes | venv no activado | `.\.venv\Scripts\Activate.ps1` desde raíz del repo |
 
 ---
 
@@ -440,9 +459,9 @@ Principio aplicado: **integración incremental** — contrato único `TiendaPL` 
 - [x] Simulador `bq_cliente.py` async (`TiendaPL`, seed 42)
 - [x] Unit tests `test_bq_client.py` (pytest-asyncio)
 - [x] Integrar `bq_cliente.py` en `GET /api/v1/pnl/{tienda_id}` (async) + redeploy Cloud Run
-- [x] Agente conversacional `pnl_agent.py` con Gemini tool calling (REPL)
-- [ ] Probar y verificar agente en producción (pendiente)
-- [ ] MCP server sobre las tools (Fase 2)
+- [x] Agente conversacional `pnl_agent.py` con Gemini tool calling (REPL) — **verificado Jul 2026**
+- [ ] **Próximo:** MCP server sobre las tools (portfolio FDE)
+- [ ] Narrativa GitHub/LinkedIn + demo del portfolio
 - [ ] Migrar endpoints list/comuna/opinc a async (opcional)
 
 ---
