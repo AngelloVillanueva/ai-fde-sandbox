@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "pnl-tools": {
+      "command": "C:\\Users\\Angello\\Desktop\\AI FDE\\ai-fde-sandbox\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\Users\\Angello\\Desktop\\AI FDE\\ai-fde-sandbox\\cloud_run_rewrite\\scripts\\mcp_server.py"],
+      "cwd": "C:\\Users\\Angello\\Desktop\\AI FDE\\ai-fde-sandbox\\cloud_run_rewrite",
+      "env": {
+        "API_BASE_URL": "https://fde-pnl-api-198971893116.europe-west1.run.app"
+      }
+    }
+  }
+}

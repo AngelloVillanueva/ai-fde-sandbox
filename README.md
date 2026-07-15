@@ -1,10 +1,10 @@
 # ai-fde-sandbox
 
-Sandbox de práctica para construir una **API de análisis financiero P&L** orientada a tiendas retail. Expone datos sintéticos vía HTTP, un agente conversacional con Gemini tool calling, y (próximo paso) un servidor MCP para portfolio FDE.
+Sandbox de práctica para construir una **API de análisis financiero P&L** orientada a tiendas retail. Expone datos sintéticos vía HTTP, un agente conversacional con Gemini tool calling, y un servidor MCP integrado con Cursor.
 
 El caso de uso simula consultas del tipo: *¿Cómo le fue a la tienda 45?* o *¿Qué tiendas hay en Providencia?*
 
-**North star del proyecto:** API P&L → URL pública → agente con tool calling — **completado**. Siguiente: MCP server + narrativa portfolio.
+**North star del proyecto:** API P&L → URL pública → agente con tool calling → MCP server — **completado**. Siguiente: narrativa portfolio.
 
 > **Handoff para sesiones AI:** ver [`CONTEXT.md`](CONTEXT.md) (estado del proyecto, north star, trampas conocidas).
 
@@ -38,6 +38,7 @@ El caso de uso simula consultas del tipo: *¿Cómo le fue a la tienda 45?* o *¿
 | Contenedor | Docker |
 | Despliegue | [Google Cloud Run](https://cloud.google.com/run) |
 | LLM / Agente | [Google Gemini API](https://ai.google.dev/) (`google-genai`) |
+| MCP server | [FastMCP](https://gofastmcp.com/) 3.4.x — protocolo estándar para tools |
 
 ---
 
@@ -55,7 +56,8 @@ ai-fde-sandbox/
     ├── scripts/
     │   ├── pnl_tool.py          # Tools: HTTP → texto humano
     │   ├── tool_registry.py     # Schemas de tools + dispatcher run_tool()
-    │   └── pnl_agent.py         # Agente REPL con Gemini tool calling
+    │   ├── pnl_agent.py         # Agente REPL con Gemini tool calling
+    │   └── mcp_server.py        # MCP server (FastMCP) — Cursor lo lanza automáticamente
     ├── src/
     │   ├── main.py              # FastAPI app y endpoints
     │   ├── models.py            # Schema TiendaPL
@@ -196,6 +198,43 @@ Verificación manual del simulador:
 cd cloud_run_rewrite
 python -m src.services.bq_cliente
 ```
+
+### MCP server (`mcp_server.py`) — verificado
+
+Servidor MCP que expone las mismas 2 tools al IDE Cursor (u otro host MCP compatible). **No usa Gemini** — el LLM es el propio de Cursor, que invoca las tools vía protocolo MCP estándar (stdio JSON-RPC).
+
+**Principio:** `mcp_server.py` no duplica lógica. Cada `@mcp.tool` delega a `run_tool()`, el mismo dispatcher que usa `pnl_agent.py`.
+
+**Configurar en Cursor** — crear `.cursor/mcp.json` en la raíz del repo:
+
+```json
+{
+  "mcpServers": {
+    "pnl-tools": {
+      "command": "RUTA_ABSOLUTA\\.venv\\Scripts\\python.exe",
+      "args": ["RUTA_ABSOLUTA\\cloud_run_rewrite\\scripts\\mcp_server.py"],
+      "cwd": "RUTA_ABSOLUTA\\cloud_run_rewrite",
+      "env": {
+        "API_BASE_URL": "https://fde-pnl-api-198971893116.europe-west1.run.app"
+      }
+    }
+  }
+}
+```
+
+> `command` debe apuntar al `.exe` del venv, no a `python` del sistema. Cursor no activa el venv — lanza el proceso directamente. Todas las rutas son absolutas (JSON en Windows usa `\\`).
+
+**Verificar:** `Ctrl+Shift+J` → pestaña MCP → `pnl-tools` con punto verde y 2 tools listadas.
+
+**Probar en chat de Cursor** (chat nuevo para no gastar tokens de esta sesión):
+
+```
+Usa la tool consultar_tienda con tienda_id 45
+```
+
+Resultado esperado: `opinc 6127.51 · La Granja`.
+
+---
 
 ### Agente conversacional (`pnl_agent.py`) — verificado
 
@@ -424,9 +463,21 @@ Cliente ────────────┼── navegador / tests
 - **Cliente tool** (`scripts/pnl_tool.py`): corre en tu PC; consume la API sin deploy.
 - **Simulador BQ** (`bq_cliente.py`): capa async para consulta por tienda; envelope `{status, data}` traducido a HTTP 404 en `main.py`.
 - **Agente** (`pnl_agent.py`): orquesta Gemini + tools; corre local, conecta con la API en prod. Modelo actual: `gemini-3.1-flash-lite`.
+- **MCP server** (`mcp_server.py`): expone las mismas tools vía protocolo MCP. Cursor lo lanza automáticamente con `.cursor/mcp.json`. No usa Gemini — el LLM es el de Cursor.
 - **Config** (`config/settings.py`): `API_BASE_URL` y `GEMINI_API_KEY` vía `.env` / pydantic-settings.
 
-Principio aplicado: **integración incremental** — contrato único `TiendaPL` + seed 42 en todas las capas. El agente no sabe cómo funciona la API; solo sabe que `consultar_tienda(id)` devuelve texto.
+Principio aplicado: **un solo dispatcher `run_tool()`** sirve a dos LLMs distintos (Gemini vía `pnl_agent.py` y el LLM de Cursor vía MCP) sin duplicar lógica. El contrato único `TiendaPL` + seed 42 se mantiene en todas las capas.
+
+### Comparativa: Agente Gemini vs MCP Cursor
+
+| | `pnl_agent.py` | `mcp_server.py` |
+|---|---|---|
+| **LLM** | Gemini (tu API key) | LLM de Cursor |
+| **Interfaz** | Terminal REPL | Chat de Cursor |
+| **Protocolo** | Custom SDK google-genai | MCP estándar (stdio) |
+| **Lanzamiento** | Manual: `python scripts/pnl_agent.py` | Automático: Cursor lee `.cursor/mcp.json` |
+| **Tools** | `run_tool()` | `run_tool()` (mismo dispatcher) |
+| **Cloud Run** | ✅ misma API | ✅ misma API |
 
 ### Configuración Gemini
 
@@ -460,8 +511,9 @@ Principio aplicado: **integración incremental** — contrato único `TiendaPL` 
 - [x] Unit tests `test_bq_client.py` (pytest-asyncio)
 - [x] Integrar `bq_cliente.py` en `GET /api/v1/pnl/{tienda_id}` (async) + redeploy Cloud Run
 - [x] Agente conversacional `pnl_agent.py` con Gemini tool calling (REPL) — **verificado Jul 2026**
-- [ ] **Próximo:** MCP server sobre las tools (portfolio FDE)
-- [ ] Narrativa GitHub/LinkedIn + demo del portfolio
+- [x] MCP server `mcp_server.py` con FastMCP — **verificado Jul 2026** (Cursor invoca tools vía stdio)
+- [ ] **Próximo:** Narrativa GitHub/LinkedIn + demo del portfolio
+- [ ] `docker-compose.yml` — portabilidad sin Cloud Run (opcional)
 - [ ] Migrar endpoints list/comuna/opinc a async (opcional)
 
 ---
