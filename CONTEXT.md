@@ -15,7 +15,10 @@
 | Tools HTTP (`pnl_tool.py`) | ✅ |
 | Agente Gemini tool calling | ✅ verificado |
 | MCP server (portfolio FDE) | ✅ **verificado Jul 2026** |
+| Commits agente + MCP | ✅ **Jul 2026** |
 | Narrativa GitHub/LinkedIn | ⏳ **Sesión 9** |
+
+> **Diagnóstico carrera (mes 1.5):** adelantado en técnico · atrás en visibilidad e inglés hablado. Detalle completo: `PROGRESS.md`
 
 ## Método
 11h/sem · 1 concepto + 1 mini build + 1 commit · anti-vibe-coding · Viernes OFF
@@ -61,6 +64,7 @@ ai-fde-sandbox/                              ← raíz del repo (git)
 ├── README.md                                ← docs públicas · demo · arquitectura detallada
 ├── CONTEXT.md                               ← handoff agentes · estado · trampas · roadmap
 ├── CAREER.md                                ← north star carrera · stack FDE · fases
+├── PROGRESS.md                              ← scorecard · debilidades · cronograma Microsoft · 18m
 │
 ├── career-assets/
 │   └── CV_EN.md                             ← CV en inglés (portfolio)
@@ -98,7 +102,7 @@ ai-fde-sandbox/                              ← raíz del repo (git)
 
 | Capa | Ruta | Deploy Cloud Run | Qué hace |
 |---|---|---|---|
-| Docs / carrera | `README.md`, `CONTEXT.md`, `CAREER.md` | — | Handoff, demo, north star |
+| Docs / carrera | `README.md`, `CONTEXT.md`, `CAREER.md`, `PROGRESS.md` | — | Handoff, demo, north star, scorecard |
 | Config | `config/settings.py`, `.env` | — | URLs y API keys por entorno |
 | Tools + agente | `scripts/` | No | Consumen la API; Gemini elige tools vía `tool_registry` |
 | API | `src/` | **Sí** | Expone P&L JSON vía REST |
@@ -181,11 +185,12 @@ gcloud run deploy fde-pnl-api --source=. --region=europe-west1 --allow-unauthent
 Ver **Árbol del proyecto** arriba. Los más tocados: `src/main.py` · `pnl_services.py` · `bq_cliente.py` · `scripts/pnl_tool.py` · `scripts/tool_registry.py` · `scripts/pnl_agent.py` · `scripts/mcp_server.py` · `.cursor/mcp.json`
 
 ## Última sesión
-MCP server **verificado** (Jul 2026): `mcp_server.py` · FastMCP 3.4.4 · 2 tools (`consultar_tienda`, `consultar_comuna`) · Cursor invocó `consultar_tienda(45)` → `opinc 6127.51 · La Granja` vía Cloud Run.
-`requirements.txt` estabilizado: `fastapi>=0.115.0` · `google-genai>=2.10.0` · `fastmcp>=3.4.0` · 12 tests green.
-Commits pendientes:
-- `Add PnL conversational agent with Gemini tool calling`
-- `Add MCP server exposing PnL tools via FastMCP`
+**Jul 2026 — Cierre técnico + actualización manifiesto:**
+- Commits agente + MCP **cerrados** (nada pendiente por commitear)
+- Creado `PROGRESS.md` — scorecard, debilidades, cronograma Microsoft completo (Fases 1–4), corrección **AB-620** (no AI-620)
+- Actualizado `CAREER.md` — stack MCP ✅, perfil APIs/agentes, formación Microsoft, acciones visibilidad
+- **Próximo:** Sesión 9 — narrativa LinkedIn/GitHub (otra sesión)
+- MCP verificado: `consultar_tienda(45)` → `opinc 6127.51 · La Granja` vía Cloud Run · 12 tests green
 
 ## No asumir
 Sin BQ real · Agente y MCP locales (no deployados) · MCP no usa Gemini — usa el LLM de Cursor · No mezclar Walmart
@@ -267,4 +272,5 @@ El docstring equivale a `description` en `TOOL_SCHEMAS`. Los type hints (`int`, 
 | Cloud Run | ✅ misma API | ✅ misma API |
 
 ## Referencia carrera
-Ver `CAREER.md` para perfil completo, stack target, checkpoints de mercado y frases de entrevista.
+Ver `CAREER.md` para perfil completo, stack target, checkpoints de mercado y frases de entrevista.  
+Ver `PROGRESS.md` para scorecard mes a mes, debilidades, formación Microsoft (PL-400 · AB-410 · AB-620) y viabilidad 18 meses.
