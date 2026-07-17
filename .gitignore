@@ -27,3 +27,8 @@ ENV/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Carrera / handoff local (no publicar en GitHub)
+CONTEXT.md
+PROGRESS.md
+career-assets/
