@@ -28,3 +28,24 @@ class PNLService:
         if tienda:
             return tienda.opinc
         return None
+
+    def analizar_tienda(self, tienda_id: int) -> Optional[dict]:
+        tienda = self.get_tienda_por_id(tienda_id)
+        if not tienda:
+            return None
+        todas = self.get_todas_las_tiendas()
+        avg_opinc = sum(t.opinc for t in todas) / len(todas)
+        avg_margen = sum(t.opinc / t.ventas for t in todas if t.ventas) / len(todas)
+        margen = tienda.opinc / tienda.ventas if tienda.ventas else 0.0
+        diff_opinc = tienda.opinc - avg_opinc
+        diff_pct = (diff_opinc / avg_opinc * 100) if avg_opinc else 0.0
+        return {
+            "tienda_id": tienda_id,
+            "comuna": tienda.comuna,
+            "opinc": tienda.opinc,
+            "margen_pct": round(margen * 100, 2),
+            "promedio_portfolio_opinc": round(avg_opinc, 2),
+            "promedio_portfolio_margen_pct": round(avg_margen * 100, 2),
+            "diff_opinc_vs_promedio": round(diff_opinc, 2),
+            "diff_pct_vs_promedio": round(diff_pct, 1),
+        }

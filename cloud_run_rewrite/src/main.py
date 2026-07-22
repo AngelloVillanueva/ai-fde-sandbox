@@ -11,7 +11,7 @@ pnl_service = PNLService()
 # Nuestra primera ruta
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "service": "ai-fde-balancer"}
+    return {"status": "healthy", "service": "fde-pnl-api"}
 
 # Endpoint para listar todas las tiendas
 @app.get("/api/v1/pnl", response_model=List[TiendaPL])
@@ -47,3 +47,12 @@ def get_opinc_por_id(tienda_id: int):
     if opinc is None:
         raise HTTPException(status_code=404, detail=f"La tienda {tienda_id} no existe")
     return {"opinc": opinc}
+
+
+@app.get("/api/v1/pnl/{tienda_id}/analisis", response_model=dict)
+def get_analisis_tienda(tienda_id: int):
+    """Margen y comparacion vs promedio del portfolio (100 tiendas, seed 42)."""
+    analisis = pnl_service.analizar_tienda(tienda_id)
+    if analisis is None:
+        raise HTTPException(status_code=404, detail=f"La tienda {tienda_id} no existe")
+    return analisis

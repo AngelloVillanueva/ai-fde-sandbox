@@ -2,9 +2,9 @@
 
 Sandbox de práctica para construir una **API de análisis financiero P&L** orientada a tiendas retail. Expone datos sintéticos vía HTTP, un agente conversacional con Gemini tool calling, y un servidor MCP integrado con Cursor.
 
-El caso de uso simula consultas del tipo: *¿Cómo le fue a la tienda 45?* o *¿Qué tiendas hay en Providencia?*
+El caso de uso simula consultas del tipo: *¿Cómo le fue a la tienda 45?*, *¿Está por encima del promedio?* o *¿Cuál tienda rinde mejor en La Granja?*
 
-**North star del proyecto:** API P&L → URL pública → agente con tool calling → MCP server — **completado**. Siguiente: narrativa portfolio.
+**North star del proyecto:** API P&L → URL pública → agente con tool calling → MCP server — **completado**. **Capa agente ampliada (Jul 2026):** 6 tools · insights · evals · multi-turn REPL. Siguiente: narrativa portfolio + redeploy `/analisis`.
 
 > **Handoff para sesiones AI:** ver [`CONTEXT.md`](CONTEXT.md) (estado del proyecto, north star, trampas conocidas).
 
@@ -19,7 +19,10 @@ El caso de uso simula consultas del tipo: *¿Cómo le fue a la tienda 45?* o *¿
 | Health check | https://fde-pnl-api-198971893116.europe-west1.run.app/health |
 | Swagger UI | https://fde-pnl-api-198971893116.europe-west1.run.app/docs |
 | P&L tienda 45 | https://fde-pnl-api-198971893116.europe-west1.run.app/api/v1/pnl/45 |
+| Análisis tienda 45 | https://fde-pnl-api-198971893116.europe-west1.run.app/api/v1/pnl/45/analisis |
 | Filtro por comuna | https://fde-pnl-api-198971893116.europe-west1.run.app/api/v1/pnl?comuna=La%20Granja |
+
+> `/analisis` requiere **redeploy** reciente de Cloud Run. Endpoints previos siguen live.
 
 > Región: `europe-west1` · Proyecto GCP personal · Datos sintéticos (no BigQuery).
 
@@ -54,20 +57,25 @@ ai-fde-sandbox/
     │   └── settings.py          # Env vars (API_BASE_URL, GEMINI_API_KEY)
     ├── .env                     # GEMINI_API_KEY local (gitignored)
     ├── scripts/
-    │   ├── pnl_tool.py          # Tools: HTTP → texto humano
-    │   ├── tool_registry.py     # Schemas de tools + dispatcher run_tool()
-    │   ├── pnl_agent.py         # Agente REPL con Gemini tool calling
-    │   └── mcp_server.py        # MCP server (FastMCP) — Cursor lo lanza automáticamente
+    │   ├── pnl_tool.py          # 6 tools: HTTP → texto humano
+    │   ├── tool_registry.py     # Schemas + dispatcher run_tool()
+    │   ├── agent_prompt.py      # System prompt del agente Gemini
+    │   ├── pnl_agent.py         # Agente REPL · multi-turn · Gemini tool calling
+    │   ├── mcp_server.py        # MCP server (FastMCP) · 6 tools
+    │   └── run_agent_evals.py   # Eval live manual (requiere GEMINI_API_KEY)
     ├── src/
-    │   ├── main.py              # FastAPI app y endpoints
+    │   ├── main.py              # FastAPI · 6 endpoints
     │   ├── models.py            # Schema TiendaPL
     │   └── services/
-    │       ├── pnl_services.py  # Fuente única de datos sintéticos (API)
-    │       └── bq_cliente.py    # Simulador BigQuery async (TiendaPL, conectado a GET /pnl/{id})
+    │       ├── pnl_services.py  # PNLService · analizar_tienda() · seed 42
+    │       └── bq_cliente.py    # Simulador BigQuery async
     ├── test/
-    │   ├── test_main.py         # Integration tests API
-    │   ├── test_pnl_tool.py     # Unit tests tools (mock httpx)
-    │   └── test_bq_client.py    # Unit tests BQ simulado (pytest-asyncio)
+    │   ├── test_main.py         # Integration tests API (10)
+    │   ├── test_pnl_tool.py     # Unit tests tools (11)
+    │   ├── test_bq_client.py    # Unit tests BQ async (3)
+    │   ├── test_agent_eval.py   # Routing agente + run_tool (16)
+    │   └── fixtures/
+    │       └── agent_eval_cases.json
     ├── Dockerfile
     └── requirements.txt
 ```
@@ -103,6 +111,9 @@ El módulo `bq_cliente.py` replica el mismo contrato (`TiendaPL`, seed 42) como 
 | `GET` | `/api/v1/pnl?comuna={nombre}` | Filtra tiendas por comuna |
 | `GET` | `/api/v1/pnl/{tienda_id}` | P&L completo de una tienda |
 | `GET` | `/api/v1/pnl/{tienda_id}/opinc` | Solo el ingreso operativo |
+| `GET` | `/api/v1/pnl/{tienda_id}/analisis` | Margen y comparación vs promedio del portfolio |
+
+**Respuesta `/analisis` (tienda 45, seed 42):** incluye `margen_pct`, `promedio_portfolio_opinc`, `diff_opinc_vs_promedio`, `diff_pct_vs_promedio`.
 
 **Referencia fija (seed 42, tienda 45):**
 
@@ -156,41 +167,22 @@ Abrir en el navegador:
 ### Tests
 
 ```bash
-cd cloud_run_rewrite
-pytest -v                         # todos (12 tests)
-pytest test/test_main.py -v       # API integration (4)
-pytest test/test_pnl_tool.py -v   # tools unitarios (5)
-pytest test/test_bq_client.py -v  # BQ simulado async (3)
+# Desde raíz del repo o cloud_run_rewrite/
+pytest -v                              # todos (40 tests)
+pytest cloud_run_rewrite/test/test_main.py -v       # API (10)
+pytest cloud_run_rewrite/test/test_pnl_tool.py -v   # tools (11)
+pytest cloud_run_rewrite/test/test_bq_client.py -v  # BQ async (3)
+pytest cloud_run_rewrite/test/test_agent_eval.py -v # agent eval (16)
 ```
 
 | Archivo | Tipo | Qué prueba |
 |---|---|---|
-| `test/test_main.py` | Integration | API vía `TestClient` (sin red externa) |
-| `test/test_pnl_tool.py` | Unit | Tools con `@patch` + `MagicMock` (httpx fake) |
-| `test/test_bq_client.py` | Unit async | `BigQuerySimulatedClient` con `@pytest.mark.asyncio` |
+| `test/test_main.py` | Integration | API vía `TestClient` — health, P&L, opinc, analisis, list |
+| `test/test_pnl_tool.py` | Unit | 6 tools + formatters con `@patch` httpx |
+| `test/test_bq_client.py` | Unit async | `BigQuerySimulatedClient` |
+| `test/test_agent_eval.py` | Unit mock | `run_tool()` dispatch · routing Gemini (mock `get_client`) |
 
-**Integration tests API** (`test_main.py`):
-
-- Health check (`200`)
-- Happy path tienda 45 (contrato completo `TiendaPL`)
-- Tienda inexistente (`404`)
-- Filtro por comuna (`?comuna=La+Granja`)
-
-**Unit tests pnl_tool** (`test_pnl_tool.py`) — sin uvicorn ni Cloud Run:
-
-- `formatear_tienda` / `formatear_comuna` (lista vacía)
-- `consultar_tienda` 200 y 404
-- `consultar_comuna` 200
-
-Patrón: `@patch("scripts.pnl_tool.httpx.get")` intercepta la red; `MagicMock` simula `status_code` y `.json()`.
-
-**Unit tests bq_cliente** (`test_bq_client.py`) — sin GCP ni uvicorn:
-
-- `get_tienda_por_id` existente (tienda 45, seed 42)
-- Tienda inexistente (`status: error`)
-- Consistencia de datos con `PNLService` (mismo `opinc` / `comuna`)
-
-Patrón: `@pytest.mark.asyncio` + `await client.get_tienda_por_id(...)`.
+Los tests de agente **no requieren** `GEMINI_API_KEY` (cliente lazy + mocks). Eval live: `python scripts/run_agent_evals.py`.
 
 Verificación manual del simulador:
 
@@ -199,11 +191,20 @@ cd cloud_run_rewrite
 python -m src.services.bq_cliente
 ```
 
-### MCP server (`mcp_server.py`) — verificado
+### MCP server (`mcp_server.py`) — 6 tools verificadas
 
-Servidor MCP que expone las mismas 2 tools al IDE Cursor (u otro host MCP compatible). **No usa Gemini** — el LLM es el propio de Cursor, que invoca las tools vía protocolo MCP estándar (stdio JSON-RPC).
+Servidor MCP que expone **6 tools** al IDE Cursor. **No usa Gemini** — el LLM de Cursor invoca las tools vía MCP (stdio JSON-RPC).
 
-**Principio:** `mcp_server.py` no duplica lógica. Cada `@mcp.tool` delega a `run_tool()`, el mismo dispatcher que usa `pnl_agent.py`.
+| Tool MCP | Uso típico |
+|---|---|
+| `consultar_tienda` | P&L completo de una tienda |
+| `consultar_opinc` | Solo OPINC |
+| `consultar_comuna` | Agregado por comuna |
+| `comparar_tiendas` | Ranking OPINC en comuna |
+| `resumen_portfolio` | Vista ejecutiva 100 tiendas |
+| `analizar_tienda` | Margen vs promedio portfolio |
+
+**Principio:** cada `@mcp.tool` delega a `run_tool()` — mismo dispatcher que Gemini.
 
 **Configurar en Cursor** — crear `.cursor/mcp.json` en la raíz del repo:
 
@@ -224,7 +225,7 @@ Servidor MCP que expone las mismas 2 tools al IDE Cursor (u otro host MCP compat
 
 > `command` debe apuntar al `.exe` del venv, no a `python` del sistema. Cursor no activa el venv — lanza el proceso directamente. Todas las rutas son absolutas (JSON en Windows usa `\\`).
 
-**Verificar:** `Ctrl+Shift+J` → pestaña MCP → `pnl-tools` con punto verde y 2 tools listadas.
+**Verificar:** `Ctrl+Shift+J` → MCP → `pnl-tools` con punto verde y **6 tools** listadas.
 
 **Probar en chat de Cursor** (chat nuevo para no gastar tokens de esta sesión):
 
@@ -236,11 +237,13 @@ Resultado esperado: `opinc 6127.51 · La Granja`.
 
 ---
 
-### Agente conversacional (`pnl_agent.py`) — verificado
+### Agente conversacional (`pnl_agent.py`)
 
-Agente REPL con **Gemini tool calling** (modelo `gemini-3.1-flash-lite`). Acepta preguntas en lenguaje natural; Gemini elige la tool y el script ejecuta `run_tool()` contra la API en Cloud Run.
+Agente REPL con **Gemini tool calling** (`gemini-3.1-flash-lite`). System prompt en `agent_prompt.py`. Soporta **multi-turn** (memoria en sesión) y comando `reset`.
 
-**Requisitos:** venv activo, `GEMINI_API_KEY` en `.env`, modelo con cuota > 0 en AI Studio.
+**Comandos REPL:** `salir` · `reset` (nueva conversación)
+
+**Requisitos:** venv activo · `GEMINI_API_KEY` en `cloud_run_rewrite/.env` · cuota > 0 en AI Studio
 
 ```powershell
 # Activar venv primero (obligatorio)
@@ -255,28 +258,30 @@ python scripts/pnl_agent.py
 ```
 
 ```
-Agente P&L · escribe 'salir' para terminar
+Agente P&L · escribe 'salir' para terminar · 'reset' para nueva conversacion
 
 Tú: ¿Cómo le fue a la tienda 45?
-Agente: La tienda 45 ubicada en La Granja registró ventas de $18,569,
-        costos de $7,918.98, OPEX de $4,522.51 y un ingreso operativo
-        neto (OPINC) de $6,127.51.
+Agente: [P&L completo con cifras grounded]
 
-Tú: ¿Qué tiendas hay en La Granja?
-Agente: En La Granja se encuentran las tiendas 12, 45 y 78...
+Tú: ¿Está por encima del promedio?
+Agente: [usa analizar_tienda · compara vs portfolio]
 
-Tú: salir
-Chao.
+Tú: reset
+Conversacion reiniciada.
 ```
 
 ### Script tool (`pnl_tool.py`)
 
-Cliente local con **2 tools** que llaman la API y devuelven texto legible:
+Cliente local con **6 tools** que llaman la API y devuelven texto legible:
 
 | Tool | CLI | Endpoint API |
 |---|---|---|
-| Por tienda | `--tienda_id 45` | `GET /api/v1/pnl/{id}` |
+| P&L tienda | `--tienda_id 45` | `GET /api/v1/pnl/{id}` |
+| Solo OPINC | `--opinc 45` | `GET /api/v1/pnl/{id}/opinc` |
 | Por comuna | `--comuna "La Granja"` | `GET /api/v1/pnl?comuna=X` |
+| Ranking comuna | `--ranking "La Granja"` | `GET /api/v1/pnl?comuna=X` + sort |
+| Portfolio | `--portfolio` | `GET /api/v1/pnl` |
+| Análisis vs promedio | `--analisis 45` | `GET /api/v1/pnl/{id}/analisis` |
 
 **Local** (requiere uvicorn corriendo en otra terminal):
 
@@ -284,7 +289,11 @@ Cliente local con **2 tools** que llaman la API y devuelven texto legible:
 cd cloud_run_rewrite
 $env:API_BASE_URL="http://127.0.0.1:8000"
 python scripts/pnl_tool.py --tienda_id 45
+python scripts/pnl_tool.py --opinc 45
 python scripts/pnl_tool.py --comuna "La Granja"
+python scripts/pnl_tool.py --ranking "La Granja"
+python scripts/pnl_tool.py --portfolio
+python scripts/pnl_tool.py --analisis 45
 ```
 
 **Producción** (Cloud Run — no requiere redeploy del script):
@@ -292,7 +301,11 @@ python scripts/pnl_tool.py --comuna "La Granja"
 ```powershell
 $env:API_BASE_URL="https://fde-pnl-api-198971893116.europe-west1.run.app"
 python scripts/pnl_tool.py --tienda_id 45
+python scripts/pnl_tool.py --opinc 45
 python scripts/pnl_tool.py --comuna "La Granja"
+python scripts/pnl_tool.py --ranking "La Granja"
+python scripts/pnl_tool.py --portfolio
+python scripts/pnl_tool.py --analisis 45
 ```
 
 Default sin `$env:API_BASE_URL`: `http://127.0.0.1:8000` (definido en `config/settings.py`).
@@ -371,9 +384,10 @@ Al terminar, `gcloud` imprime la **Service URL** pública (`https://....run.app`
 ┌─────────────────────────────────────────────────────────────────┐
 │  CAPA TOOLS (local)                                             │
 │                                                                 │
-│   pnl_tool.py                                                   │
-│   consultar_tienda(id) ──── httpx GET ───►  Cloud Run API      │
-│   consultar_comuna(c)  ──── httpx GET ───►  Cloud Run API      │
+│   pnl_tool.py · 6 tools                                         │
+│   consultar_tienda / consultar_opinc / consultar_comuna /       │
+│   comparar_tiendas / resumen_portfolio / analizar_tienda        │
+│         │              httpx GET ───►  Cloud Run API              │
 │                                                                 │
 │   ◄── JSON TiendaPL ──────────────────────────────────────────  │
 │   ◄── texto en prosa (formatear_tienda / formatear_comuna)      │
@@ -430,10 +444,11 @@ El usuario **no necesita mencionar la tool**. Gemini infiere la intención leyen
 Usuario escribe                          Tool elegida por Gemini
 ──────────────────────────────────────   ──────────────────────
 "¿Cómo le fue a la tienda 45?"        → consultar_tienda(45)
-"Dame el P&L de la 45"                → consultar_tienda(45)
+"¿Cuánto OPINC tiene la 45?"          → consultar_opinc(45)
 "¿Qué tiendas hay en La Granja?"      → consultar_comuna("La Granja")
-"Muéstrame la zona de Providencia"    → consultar_comuna("Providencia")
-"¿Cuánto vendió la cuarenta y cinco?" → consultar_tienda(45)
+"¿Cuál rinde mejor en La Granja?"     → comparar_tiendas("La Granja")
+"Resumen del portfolio"               → resumen_portfolio()
+"¿La 45 está sobre el promedio?"      → analizar_tienda(45)
 ```
 
 ### API + capa de datos
@@ -453,7 +468,8 @@ Cliente ────────────┼── navegador / tests
                     ▼
                PNLService
                  ├─ async: get_tienda_por_id_async → bq_cliente (GET /pnl/{id})
-                 └─ sync:  _database (= bq.mock_database) → list/comuna/opinc
+                 ├─ sync:  _database (= bq.mock_database) → list/comuna/opinc
+                 └─ analizar_tienda() → GET /pnl/{id}/analisis
                     │
                     ▼
                TiendaPL          ← schema Pydantic (contrato único)
@@ -494,6 +510,15 @@ Principio aplicado: **un solo dispatcher `run_tool()`** sirve a dos LLMs distint
 | Error `thought_signature` | Viaje 2 reconstruye el `function_call` | Pasar `response.candidates[0].content` completo |
 | `ModuleNotFoundError: config` | Script sin `sys.path` | Bloque `_ROOT` al inicio de scripts en `scripts/` |
 | Agente sin paquetes | venv no activado | `.\.venv\Scripts\Activate.ps1` desde raíz del repo |
+| pytest sin API key | Import de pnl_agent | OK: `get_client()` lazy; tests usan mock |
+
+### Evals del agente
+
+| Recurso | Uso |
+|---|---|
+| `test/fixtures/agent_eval_cases.json` | 10 casos: input → tool esperada |
+| `test/test_agent_eval.py` | Routing mock (CI, sin Gemini) |
+| `scripts/run_agent_evals.py` | Eval live manual (requiere API key + red) |
 
 ---
 
@@ -511,7 +536,9 @@ Principio aplicado: **un solo dispatcher `run_tool()`** sirve a dos LLMs distint
 - [x] Unit tests `test_bq_client.py` (pytest-asyncio)
 - [x] Integrar `bq_cliente.py` en `GET /api/v1/pnl/{tienda_id}` (async) + redeploy Cloud Run
 - [x] Agente conversacional `pnl_agent.py` con Gemini tool calling (REPL) — **verificado Jul 2026**
-- [x] MCP server `mcp_server.py` con FastMCP — **verificado Jul 2026** (Cursor invoca tools vía stdio)
+- [x] MCP server `mcp_server.py` con FastMCP — **verificado Jul 2026**
+- [x] **Capa agente ampliada (Jul 2026):** 6 tools · `/analisis` · system prompt · multi-turn · evals · **40 tests**
+- [ ] Redeploy Cloud Run (`/analisis` en prod)
 - [ ] **Próximo:** Narrativa GitHub/LinkedIn + demo del portfolio
 - [ ] `docker-compose.yml` — portabilidad sin Cloud Run (opcional)
 - [ ] Migrar endpoints list/comuna/opinc a async (opcional)

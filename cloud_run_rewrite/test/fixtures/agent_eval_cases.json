@@ -1,0 +1,62 @@
+[
+  {
+    "input": "Como le fue a la tienda 45?",
+    "expected_tool": "consultar_tienda",
+    "expected_args": {"tienda_id": 45},
+    "grounded_contains": ["6127.51", "La Granja"]
+  },
+  {
+    "input": "Cual es el OPINC de la tienda 45?",
+    "expected_tool": "consultar_opinc",
+    "expected_args": {"tienda_id": 45},
+    "grounded_contains": ["6127.51"]
+  },
+  {
+    "input": "Que tiendas hay en La Granja?",
+    "expected_tool": "consultar_comuna",
+    "expected_args": {"comuna": "La Granja"},
+    "grounded_contains": ["45"]
+  },
+  {
+    "input": "Cual tienda tiene mejor OPINC en La Granja?",
+    "expected_tool": "comparar_tiendas",
+    "expected_args": {"comuna": "La Granja"},
+    "grounded_contains": ["Ranking OPINC"]
+  },
+  {
+    "input": "Resumen del portfolio completo",
+    "expected_tool": "resumen_portfolio",
+    "expected_args": {},
+    "grounded_contains": ["Portfolio", "100 tiendas"]
+  },
+  {
+    "input": "La tienda 45 esta por encima del promedio?",
+    "expected_tool": "analizar_tienda",
+    "expected_args": {"tienda_id": 45},
+    "grounded_contains": ["Analisis tienda 45", "promedio"]
+  },
+  {
+    "input": "Dame el P&L completo de la tienda 12",
+    "expected_tool": "consultar_tienda",
+    "expected_args": {"tienda_id": 12},
+    "grounded_contains": []
+  },
+  {
+    "input": "Tienda 999",
+    "expected_tool": "consultar_tienda",
+    "expected_args": {"tienda_id": 999},
+    "grounded_contains": ["no existe"]
+  },
+  {
+    "input": "How did store 45 perform?",
+    "expected_tool": "consultar_tienda",
+    "expected_args": {"tienda_id": 45},
+    "grounded_contains": ["6127.51"]
+  },
+  {
+    "input": "Margen de la tienda 45 vs el resto",
+    "expected_tool": "analizar_tienda",
+    "expected_args": {"tienda_id": 45},
+    "grounded_contains": ["margen"]
+  }
+]

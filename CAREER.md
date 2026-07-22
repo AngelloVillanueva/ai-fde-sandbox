@@ -121,7 +121,7 @@ Programa Jul 2026 – Feb 2027 (~266.5h). Cronograma completo en `PROGRESS.md`.
 | Mes | Técnico | Mercado |
 |---|---|---|
 | 3 | FastAPI app en GitHub + tests | LinkedIn headline actualizado |
-| 4 | Cloud Run app + PL-400 · AB-410 en curso | 1+ recruiter contactado (orgánico) |
+| 4 | Cloud Run app + PL-400 · AB-410 en curso | 1+ recruiter contactado (orgánico) ✅ Jul 2026 |
 | 6 | Portfolio #1 en construcción | 1 conversación informal con empresa target |
 | 9 | Portfolio #1 completo + AB-620 | Articular impacto en $$$ en entrevista informal |
 | 12 | Portfolio #2 + PMLE | Referral en al menos 1 empresa target |
